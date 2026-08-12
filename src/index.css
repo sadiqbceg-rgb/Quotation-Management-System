@@ -1,0 +1,46 @@
+@import 'tailwindcss';
+
+/**
+ * Corporate theme.
+ *
+ * Colours are the company's own, sampled from reference/letterhead.pdf and
+ * reference/quotation-sample.pdf. See src/config/document-layout.ts COLORS.
+ *
+ * PRD §38 asks for professional, clean, corporate, modern, simple — and
+ * explicitly no excessive animation, gradients, decoration or clutter.
+ */
+@theme {
+  --color-brand-red: #d4292e;
+  --color-brand-navy: #002060;
+  --color-brand-link: #0563c1;
+  --color-brand-amber: #ffbd59;
+
+  --font-sans:
+    'Segoe UI', Carlito, Calibri, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+    font-family: var(--font-sans);
+  }
+
+  :focus-visible {
+    @apply outline-brand-navy outline-2 outline-offset-2;
+  }
+
+  /* Respect a user's reduced-motion preference. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
