@@ -432,7 +432,16 @@ describe('deactivating a person in use', () => {
           companyName: 'TEST_ONLY Client Co.',
           address: 'TEST_ONLY Address',
         },
-        lines: [{ category: 'Manpower', quantity: 1_000, unitPrice: 2_000 }],
+        lines: [
+          {
+            category: 'Manpower',
+            description: 'TEST_ONLY General Labour',
+            quantity: 1_000,
+            unit: 'Hour',
+            unitPrice: 2_000,
+            remarks: '',
+          },
+        ],
         authorizedPerson: { id: personId },
       },
     });

@@ -176,6 +176,87 @@ export const COLORS = {
 /* Pagination policy (§12.3) — consumed identically by every renderer         */
 /* -------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------- */
+/* Letterhead source geometry — measured from reference/letterhead.pdf         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The letterhead PDF's own page box, reported by the asset pipeline.
+ *
+ * It does NOT match the quotation. The letterhead's MediaBox is
+ * `0 7.83 595.5 850.08` — 595.5 × 842.25 pt with a y origin of 7.83 — while
+ * `quotation-sample.pdf` is `0 0 595.32 841.92`.
+ *
+ * Anything embedding the letterhead as a background has to normalise that
+ * offset, or every piece of furniture lands 7.8 pt from where the measurements
+ * in §2.4 say it is. Recorded here so Phase 08 cannot miss it.
+ */
+export const LETTERHEAD_SOURCE = {
+  mediaBox: { x0: 0, y0: 7.8299813, x1: 595.5, y1: 850.07996 },
+  get widthPt(): number {
+    return this.mediaBox.x1 - this.mediaBox.x0;
+  },
+  get heightPt(): number {
+    return this.mediaBox.y1 - this.mediaBox.y0;
+  },
+  /** Subtract this from a letterhead y to reach quotation coordinates. */
+  get yOffsetPt(): number {
+    return this.mediaBox.y0;
+  },
+  pageCount: 1,
+  previewDpi: 150,
+} as const;
+
+/* -------------------------------------------------------------------------- */
+/* Meta block — reference/quotation-sample.pdf page 1                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The meta-block labels, in the order the approved document prints them.
+ *
+ * `Address:` is not in the approved document, but PRD §12 makes the client
+ * address a required field. It is emitted last so the reference's own order is
+ * preserved above it. See §26 UR-06 — the company has not yet said whether it
+ * should print at all.
+ */
+export const META_LABELS = {
+  quotationFor: 'Quotation For:',
+  quotationNumber: 'Quotation No.:',
+  date: 'Date:',
+  attention: 'Attention:',
+  client: 'Client:',
+  address: 'Address:',
+} as const;
+
+/** Shown in place of a number until the backend issues one (PRD §35). */
+export const DRAFT_NUMBER_PLACEHOLDER = 'Will be assigned on save';
+
+/* -------------------------------------------------------------------------- */
+/* Section headings — reference/quotation-sample.pdf                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Heading text. The NUMBERS are positional, assigned while building the model,
+ * so omitting an optional section renumbers the rest correctly.
+ */
+export const SECTION_TITLES = {
+  scopeOfWork: 'Scope of Work',
+  termsAndConditions: 'General Terms & Conditions',
+} as const;
+
+/* -------------------------------------------------------------------------- */
+/* Generated assets — produced by scripts/prepare-assets.ts                   */
+/* -------------------------------------------------------------------------- */
+
+export const GENERATED_ASSETS = {
+  letterheadPdf: 'letterhead.pdf',
+  letterheadPreview: `letterhead-preview@${String(LETTERHEAD_SOURCE.previewDpi)}dpi.png`,
+  logo: 'logo.jpg',
+  logoWatermark: 'logo-watermark.png',
+  seal: 'seal-transparent.png',
+  manifest: 'manifest.json',
+} as const;
+
 export const PAGINATION = {
   /** A table header must never be the last thing on a page. */
   keepTableHeaderWithFirstRow: true,
@@ -189,4 +270,43 @@ export const PAGINATION = {
   showPageNumbersByDefault: false,
   /** Guard against a malformed model producing a runaway document (§13). */
   maxPages: 200,
+} as const;
+
+/* -------------------------------------------------------------------------- */
+/* Block heights, for pagination                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How tall each block is, in points.
+ *
+ * These are ESTIMATES from the measured typography, not a text-shaping engine.
+ * The preview, the PDF and the DOCX share them so all three break pages in the
+ * same place — a shared approximation keeps the three outputs consistent with
+ * each other, which matters more here than any one of them being exact.
+ *
+ * `charsPerLine` is derived from the measured body width and Calibri's average
+ * advance at 14 pt (≈ 6.4 pt), so wrapping is estimated rather than guessed.
+ */
+export const BLOCK_METRICS = {
+  averageCharWidthPt: 6.4,
+  get charsPerLine(): number {
+    return Math.floor(BODY_BOX.widthPt / this.averageCharWidthPt);
+  },
+  /** One line of body text plus its share of paragraph spacing. */
+  lineHeightPt: TYPOGRAPHY.bodyLeadingPt,
+  paragraphSpaceAfterPt: TYPOGRAPHY.paragraphSpaceAfterPt,
+  /** A numbered section heading, including the space beneath it. */
+  headingHeightPt: TYPOGRAPHY.bodyLeadingPt + TYPOGRAPHY.paragraphSpaceAfterPt,
+  /** One meta row. */
+  metaRowHeightPt: TYPOGRAPHY.bodyLeadingPt,
+  /** A table header row and a body row, both measured at 33.9 pt (§2.4). */
+  tableRowHeightPt: TABLE.minRowHeightPt,
+  /** One totals line. */
+  totalsLineHeightPt: TYPOGRAPHY.bodyLeadingPt,
+  /** Term list item pitch, before wrapping is added. */
+  termItemBaseHeightPt: TERMS_LIST.leadingPt + TERMS_LIST.spaceAfterPt,
+  /** Chars per line inside a term item, which is indented to x 70 (§2.4). */
+  get termCharsPerLine(): number {
+    return Math.floor((BODY_BOX.rightPt - TERMS_LIST.textXPt) / this.averageCharWidthPt);
+  },
 } as const;

@@ -40,16 +40,17 @@ The backend is a separate deployment — see `google-apps-script/README.md`.
 
 ## Scripts
 
-| Command             | Purpose                                                    |
-| ------------------- | ---------------------------------------------------------- |
-| `npm run dev`       | Vite dev server                                            |
-| `npm run build`     | Typecheck, then production build to `dist/`                |
-| `npm run typecheck` | `tsc --noEmit` for the app **and** the Apps Script project |
-| `npm run lint`      | ESLint, zero warnings tolerated                            |
-| `npm run format`    | Prettier                                                   |
-| `npm test`          | Vitest                                                     |
-| `npm run gas:build` | Bundle the Apps Script backend to `dist-gas/Code.js`       |
-| `npm run gas:push`  | Build, then `clasp push`                                   |
+| Command             | Purpose                                                     |
+| ------------------- | ----------------------------------------------------------- |
+| `npm run dev`       | Vite dev server                                             |
+| `npm run build`     | Prepare assets, typecheck, then production build to `dist/` |
+| `npm run assets`    | Regenerate `src/assets/generated/` from `reference/`        |
+| `npm run typecheck` | `tsc --noEmit` for the app, Apps Script **and** scripts     |
+| `npm run lint`      | ESLint, zero warnings tolerated                             |
+| `npm run format`    | Prettier                                                    |
+| `npm test`          | Vitest                                                      |
+| `npm run gas:build` | Bundle the Apps Script backend to `dist-gas/Code.js`        |
+| `npm run gas:push`  | Build, then `clasp push`                                    |
 
 ---
 
@@ -106,8 +107,8 @@ build and tests green.
 | 03 Quotation Core         | complete          |
 | 04 Item Categories        | complete          |
 | 05 Terms & Conditions     | complete          |
-| **06 Authorized Persons** | **complete**      |
-| 07 Quotation Document     | not started       |
+| 06 Authorized Persons     | complete          |
+| **07 Quotation Document** | **complete**      |
 | 08 PDF Generation         | not started       |
 | 09 DOCX Generation        | not started       |
 | 10 Google Drive           | not started       |
@@ -115,6 +116,37 @@ build and tests green.
 | 12 Security               | not started       |
 | 13 Testing                | not started       |
 | 14 Production Deployment  | not started       |
+
+---
+
+## Document assets
+
+The quotation document is drawn from the company's own files. Nothing is
+redrawn or approximated:
+
+```
+reference/                       ← read-only, the authority for every measurement
+  letterhead.pdf                 single A4 page, reused as the background of every page
+  quotation-sample.pdf           the approved quotation; §2.4's geometry was measured from it
+  company-logo.png               a JPEG, despite the extension
+  company-seal.png               a PNG with NO alpha channel
+        │
+        ▼  npm run assets  (also runs in `prebuild`)
+src/assets/generated/            ← git-ignored, reproducible, never committed
+```
+
+`scripts/prepare-assets.ts` detects each source by **magic bytes**, not by
+extension, and fails loudly naming the file if one is missing or has an
+unexpected format. It alpha-keys the seal — the source is opaque, and overlaid
+as-is it would paint a white box across the letterhead — and records a SHA-256
+fingerprint of every source in `manifest.json`. A test compares those
+fingerprints against the files on disk, so a pipeline that ever wrote back into
+`reference/` would fail the suite.
+
+One measurement worth knowing before Phase 08: the letterhead's MediaBox is
+`0 7.83 595.5 850.08`, while the quotation is `0 0 595.32 841.92`. Anything
+embedding the letterhead has to normalise that 7.83 pt y offset. It is recorded
+in the manifest and in `LETTERHEAD_SOURCE`.
 
 ---
 

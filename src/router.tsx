@@ -9,6 +9,7 @@ import LoginPage from '@/pages/login';
 import DashboardPage from '@/pages/dashboard';
 import QuotationsPage from '@/pages/quotations';
 import NewQuotationPage from '@/pages/quotations/new';
+import QuotationPreviewPage from '@/pages/quotations/preview';
 import CustomersPage from '@/pages/customers';
 import ItemsPage from '@/pages/items';
 import TermsPage from '@/pages/terms';
@@ -51,6 +52,7 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: 'quotations', element: <QuotationsPage /> },
       { path: 'quotations/new', element: <NewQuotationPage /> },
+      { path: 'quotations/:draftId/preview', element: <QuotationPreviewPage /> },
       { path: 'customers', element: <CustomersPage /> },
       { path: 'items', element: <ItemsPage /> },
       { path: 'terms', element: <TermsPage /> },

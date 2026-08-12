@@ -4,6 +4,7 @@ import { Field } from '@/components/common/Field';
 import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
 import { Checkbox } from '@/components/common/Checkbox';
+import { Textarea } from '@/components/common/Textarea';
 import { QuotationNumberField } from './QuotationNumberField';
 import type { QuotationFormValues } from '@/schemas/quotation-schema';
 
@@ -75,6 +76,26 @@ export function QuotationInfoSection({
                 invalid={invalid}
                 aria-describedby={describedBy}
                 {...register('quotationFor')}
+              />
+            )}
+          </Field>
+        </div>
+
+        <div className="sm:col-span-2">
+          <Field
+            label="Scope of Work"
+            hint="The opening paragraph under “1. Scope of Work”. Leave it blank to print the tables alone."
+            {...(errors.scopeOfWork?.message === undefined
+              ? {}
+              : { error: errors.scopeOfWork.message })}
+          >
+            {({ id, describedBy, invalid }) => (
+              <Textarea
+                id={id}
+                rows={3}
+                invalid={invalid}
+                aria-describedby={describedBy}
+                {...register('scopeOfWork')}
               />
             )}
           </Field>

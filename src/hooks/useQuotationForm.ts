@@ -20,6 +20,7 @@ export function emptyQuotationForm(): QuotationFormValues {
   return {
     quotationDate: todayIso(),
     quotationFor: '',
+    scopeOfWork: '',
     pricingMode: 'amount',
     status: 'Pending',
     vatEnabled: true,
@@ -92,6 +93,7 @@ export function useQuotationForm(options: UseQuotationFormOptions = {}) {
         draftId: draftIdRef.current,
         quotationDate: values.quotationDate,
         quotationFor: values.quotationFor,
+        scopeOfWork: values.scopeOfWork,
         pricingMode: values.pricingMode,
         status: values.status,
         client: {

@@ -20,7 +20,12 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}', 'shared/**/*.test.ts', 'google-apps-script/**/*.test.ts'],
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'shared/**/*.test.ts',
+      'google-apps-script/**/*.test.ts',
+      'scripts/**/*.test.ts',
+    ],
     coverage: {
       provider: 'v8',
       reportsDirectory: './coverage',

@@ -93,6 +93,11 @@ export default function NewQuotationPage() {
   const isAdmin = state.status === 'authenticated' && state.user.role === 'Admin';
 
   const [personError, setPersonError] = useState<string | null>(null);
+  /**
+   * Preview reads the SAVED quotation, so it is offered only once one exists.
+   * Previewing unsaved form state would show a document that cannot be produced.
+   */
+  const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
 
   const submit = async (values: QuotationFormValues, finalize: boolean): Promise<void> => {
     if (token === null) return;
@@ -127,6 +132,7 @@ export default function NewQuotationPage() {
       if (result.quotationNumber.length > 0) {
         setQuotationNumber(result.quotationNumber);
       }
+      setSavedDraftId(result.draftId);
 
       show({
         variant: 'success',
@@ -170,6 +176,16 @@ export default function NewQuotationPage() {
             <Button variant="secondary" onClick={saveDraft} isLoading={busy === 'draft'}>
               Save draft
             </Button>
+            {savedDraftId === null ? null : (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  void navigate(`/quotations/${savedDraftId}/preview`);
+                }}
+              >
+                Preview
+              </Button>
+            )}
             <Button
               isLoading={busy === 'finalize'}
               onClick={() => {

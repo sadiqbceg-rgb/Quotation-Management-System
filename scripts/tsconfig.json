@@ -1,0 +1,42 @@
+{
+  "//": [
+    "Build scripts run in Node, not the browser.",
+    "",
+    "Separated from the application project so `node` types and the image/PDF",
+    "devDependencies stay out of the app's type surface — nothing here may be",
+    "importable from src/, and giving the app project Node types is how that",
+    "boundary quietly erodes.",
+    "",
+    "Mirrors the same split google-apps-script/tsconfig.json already uses."
+  ],
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node", "vitest/globals"],
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "baseUrl": "..",
+    "paths": {
+      "@shared/*": ["shared/*"]
+    }
+  },
+  "include": [".", "../shared"],
+  "exclude": ["node_modules"]
+}

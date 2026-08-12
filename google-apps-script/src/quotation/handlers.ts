@@ -148,6 +148,7 @@ export function save(payload: unknown, context: HandlerContext): SaveResponse {
     quotationNumber,
     quotationDate: validated.quotationDate,
     quotationFor: validated.quotationFor,
+    scopeOfWork: validated.scopeOfWork,
     pricingMode: validated.pricingMode,
     currency: 'SAR',
     client: validated.client,

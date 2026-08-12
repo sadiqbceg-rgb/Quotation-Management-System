@@ -77,7 +77,18 @@ function validQuotation(overrides: Record<string, unknown> = {}): Record<string,
       companyName: 'TEST_ONLY Client Co.',
       address: 'TEST_ONLY Address, Riyadh',
     },
-    lines: [{ category: 'Manpower', quantity: 40_000, unitPrice: 2000 }],
+    lines: [
+      {
+        category: 'Manpower',
+        // Phase 07 prints this in the table's first column, so finalizing
+        // without it would produce a row with a blank Designation.
+        description: 'TEST_ONLY General Labour',
+        quantity: 40_000,
+        unit: 'Hour',
+        unitPrice: 2000,
+        remarks: '',
+      },
+    ],
     authorizedPerson: { id: signatoryId },
     ...overrides,
   };

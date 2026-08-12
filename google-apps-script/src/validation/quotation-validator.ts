@@ -61,14 +61,27 @@ export interface ValidatedClient {
 
 export interface ValidatedLine {
   category: ItemCategory;
+  /**
+   * What the row says: Designation, Equipment Description or Material
+   * Description depending on the category (PRD §14–§16).
+   *
+   * Stored, not derived. The document's first column is this text — a quotation
+   * whose rows have quantities and prices but no descriptions is not a document
+   * anyone can read.
+   */
+  description: string;
   quantity: Milli;
+  unit: string;
   unitPrice: Halalas;
+  remarks: string;
 }
 
 export interface ValidatedQuotation {
   draftId: string;
   quotationDate: string;
   quotationFor: string;
+  /** The "1. Scope of Work" intro paragraph. Optional (§26 UR-08). */
+  scopeOfWork: string;
   pricingMode: PricingMode;
   status: QuotationStatus;
   client: ValidatedClient;
@@ -186,7 +199,11 @@ function isCategory(value: unknown): value is ItemCategory {
  * rules are enforced here from the start so the endpoint is never briefly
  * willing to accept an unvalidated item.
  */
-function validateLines(source: Record<string, unknown>, fields: Fields): ValidatedLine[] {
+function validateLines(
+  source: Record<string, unknown>,
+  fields: Fields,
+  options: { requireComplete: boolean },
+): ValidatedLine[] {
   const raw = source['lines'];
   if (raw === undefined) return [];
 
@@ -233,7 +250,37 @@ function validateLines(source: Record<string, unknown>, fields: Fields): Validat
       return;
     }
 
-    lines.push({ category, quantity: milli(quantity), unitPrice: halalas(unitPrice) });
+    const description = text(line, 'description');
+    const unit = text(line, 'unit');
+    const remarks = text(line, 'remarks');
+
+    // Required only when the quotation is being finalized: a draft may hold a
+    // half-typed row, but a printed table may not have a blank first column.
+    if (options.requireComplete && !isWithinLength(description, TEXT_LIMITS.itemDescription)) {
+      fields[`lines.${String(index)}.description`] = 'A description is required.';
+      return;
+    }
+    if (description.length > TEXT_LIMITS.itemDescription.max) {
+      fields[`lines.${String(index)}.description`] = 'The description is too long.';
+      return;
+    }
+    if (unit.length > TEXT_LIMITS.unit.max) {
+      fields[`lines.${String(index)}.unit`] = 'The unit is too long.';
+      return;
+    }
+    if (remarks.length > TEXT_LIMITS.remarks.max) {
+      fields[`lines.${String(index)}.remarks`] = 'The remark is too long.';
+      return;
+    }
+
+    lines.push({
+      category,
+      description,
+      quantity: milli(quantity),
+      unit,
+      unitPrice: halalas(unitPrice),
+      remarks,
+    });
   });
 
   return lines;
@@ -301,6 +348,11 @@ export function validateQuotation(
     fields['quotationFor'] = 'Quotation For is too long.';
   }
 
+  const scopeOfWork = text(source, 'scopeOfWork');
+  if (scopeOfWork.length > TEXT_LIMITS.scopeOfWork.max) {
+    fields['scopeOfWork'] = 'Scope of Work is too long.';
+  }
+
   const pricingModeText = text(source, 'pricingMode');
   const pricingMode: PricingMode = (PRICING_MODES as readonly string[]).includes(pricingModeText)
     ? (pricingModeText as PricingMode)
@@ -312,7 +364,7 @@ export function validateQuotation(
     : 'Pending';
 
   const client = validateClient(source, options.requireComplete ? fields : {});
-  const lines = validateLines(source, fields);
+  const lines = validateLines(source, fields, { requireComplete: options.requireComplete });
 
   if (options.requireComplete && lines.length === 0) {
     fields['lines'] = 'Add at least one quotation item.';
@@ -366,6 +418,7 @@ export function validateQuotation(
     draftId,
     quotationDate,
     quotationFor,
+    scopeOfWork,
     pricingMode,
     status,
     client,

@@ -36,6 +36,8 @@ export interface QuotationPayload {
   draftId: string;
   quotationDate: string;
   quotationFor: string;
+  /** The "1. Scope of Work" intro paragraph. */
+  scopeOfWork?: string;
   pricingMode: string;
   status: QuotationStatus;
   client: Record<string, string | undefined>;

@@ -47,6 +47,13 @@ export const clientSchema = z.object({
 export const quotationFormSchema = z.object({
   quotationDate: trimmed.regex(PATTERNS.isoDate, 'Enter a valid date'),
   quotationFor: required('Quotation For', TEXT_LIMITS.quotationFor),
+  /**
+   * The "1. Scope of Work" intro paragraph (§26 UR-08).
+   *
+   * Optional: the approved document has one, but a rate-card quotation may go
+   * straight to the table. The section heading appears either way.
+   */
+  scopeOfWork: trimmed.max(TEXT_LIMITS.scopeOfWork.max, 'Scope of Work is too long'),
   pricingMode: z.enum(PRICING_MODES),
   status: z.enum(QUOTATION_STATUSES),
   vatEnabled: z.boolean(),

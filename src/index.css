@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* A4 print rules for the quotation preview (PRD §29). */
+@import './styles/print.css';
 
 /**
  * Corporate theme.

@@ -1,0 +1,75 @@
+/**
+ * Print rules for the quotation preview (PRD §29).
+ *
+ * The browser's Print dialog is the fastest route to a paper copy and the only
+ * export this phase enables — Save as PDF, Save as Word and Save to Drive
+ * arrive in Phases 08, 09 and 10.
+ *
+ * The preview is drawn at exact A4 point dimensions and CSS-scaled to fit the
+ * screen. Printing removes that scale so one preview page prints as one sheet.
+ */
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  /* Nothing but the document. No sidebar, no toolbar, no buttons. */
+  body > *:not(.print-root),
+  .print-hide {
+    display: none !important;
+  }
+
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .print-root {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* The on-screen scale-to-fit must not follow the page onto paper. */
+  .preview-scale {
+    transform: none !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+  }
+
+  .preview-page {
+    /* One preview page, one sheet. */
+    page-break-after: always;
+    break-after: page;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+  }
+
+  .preview-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  /*
+   * The letterhead is a background image, and browsers omit those by default.
+   * Without this the printed page has no header, no footer and no watermark —
+   * a quotation on blank paper.
+   */
+  .preview-page {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Blocks that must never straddle a sheet (§12.3). */
+  .keep-together {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
