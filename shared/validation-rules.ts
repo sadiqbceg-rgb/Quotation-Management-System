@@ -88,6 +88,15 @@ export const PATTERNS = {
   /** The file-safe quotation number used for folders and filenames. */
   fileSafeNumber: /^[A-Z0-9]+(-[A-Z0-9]+)+$/,
   driveUrl: /^https:\/\/drive\.google\.com\//,
+  /**
+   * A Saudi (ZATCA) VAT registration number: 15 digits, first and last both 3.
+   *
+   * The RULE lives here; the VALUE does not. The company's own number is
+   * deployment configuration — a Script Property on the backend, a build-time
+   * variable on the frontend — so it never appears in shared code, a component
+   * or a term template.
+   */
+  saudiVatNumber: /^3\d{13}3$/,
   /** A custom unit: printable, no control characters, no formula-leading char. */
   // eslint-disable-next-line no-control-regex
   customUnit: /^[^\s=+@\u0000-\u001F\u007F][^\u0000-\u001F\u007F]{0,19}$/,
@@ -157,6 +166,16 @@ export function stripControlCharacters(value: string): string {
 export function isWithinLength(value: string, limits: { min: number; max: number }): boolean {
   const length = value.trim().length;
   return length >= limits.min && length <= limits.max;
+}
+
+/**
+ * True for a well-formed Saudi VAT registration number.
+ *
+ * Shape only — there is no check digit to verify and no registry to call, so
+ * this catches a typo or a truncated paste, not an invalid registration.
+ */
+export function isValidSaudiVatNumber(value: string): boolean {
+  return PATTERNS.saudiVatNumber.test(value.trim());
 }
 
 export function countDecimals(value: number): number {

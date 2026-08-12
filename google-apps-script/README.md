@@ -88,7 +88,8 @@ Responses:
 ## Script Properties
 
 Set these in the Apps Script editor under **Project Settings → Script
-Properties**. Never commit them, and never expose them to the frontend.
+Properties**. Never commit a required property, and never expose one to the
+frontend.
 
 ### Required
 
@@ -101,12 +102,27 @@ Properties**. Never commit them, and never expose them to the frontend.
 
 ### Optional (defaults shown)
 
-| Property          | Default   | Purpose                                                  |
-| ----------------- | --------- | -------------------------------------------------------- |
-| `COMPANY_CODE`    | `SFC`     | Speed Falcon Company                                     |
-| `BRANCH_CODE`     | `RUH`     | Riyadh branch                                            |
-| `DOC_TYPE_CODE`   | `QTN`     | Quotation                                                |
-| `ALLOWED_ORIGINS` | _(empty)_ | Defence in depth only — Apps Script cannot enforce CORS. |
+| Property             | Default           | Purpose                                                    |
+| -------------------- | ----------------- | ---------------------------------------------------------- |
+| `COMPANY_CODE`       | `SFC`             | Speed Falcon Company                                       |
+| `BRANCH_CODE`        | `RUH`             | Riyadh branch                                              |
+| `DOC_TYPE_CODE`      | `QTN`             | Quotation                                                  |
+| `COMPANY_VAT_NUMBER` | the company's own | Printed on the quotation; resolves `{{company.vatNumber}}` |
+| `ALLOWED_ORIGINS`    | _(empty)_         | Defence in depth only — Apps Script cannot enforce CORS.   |
+
+The optional properties are **not secrets.** They are company identifiers that
+appear on the quotation itself, which is why they carry committed defaults.
+Only the four required properties above are confidential.
+
+`COMPANY_VAT_NUMBER` must be 15 digits, first and last both `3`. A malformed
+override is refused and the known-good default is used instead, with a warning
+that names the property and never its value — a wrong VAT number on a client's
+quotation is a tax-compliance problem, so a typo must not reach a document.
+
+The frontend carries the same number as `VITE_COMPANY_VAT_NUMBER` (see
+`.env.example`) so the term preview can resolve the token without a round trip.
+**This Script Property is authoritative for generated documents.** A test
+asserts the two configurations cannot drift apart.
 
 Together the three codes produce the quotation number `SFC/RUH/QTN/YYYY/###`.
 They are configuration rather than literals so a second branch can be added

@@ -18,6 +18,7 @@ import { QuotationTermsSection } from '@/components/terms/QuotationTermsSection'
 import { saveQuotation } from '@/services/quotation/quotation-service';
 import { AppError, messageOf } from '@/services/api/errors';
 import { formatDisplayDate } from '@/utils/format-date';
+import { getEnv } from '@/config/env';
 import { DEFAULT_CLOSING_PARAGRAPH, DEFAULT_COMPANY_NAME } from '@shared/company-defaults';
 import type { TermTokenContext } from '@shared/term-tokens';
 import type { QuotationFormValues } from '@/schemas/quotation-schema';
@@ -71,8 +72,8 @@ export default function NewQuotationPage() {
   const tokenContext = useMemo<TermTokenContext>(
     () => ({
       companyName: DEFAULT_COMPANY_NAME,
-      // Not in any reference document; comes from Company Settings when built.
-      companyVatNumber: '',
+      // Configuration, never a literal here — see src/config/env.ts.
+      companyVatNumber: getEnv().companyVatNumber,
       clientCompanyName,
       clientName,
       quotationNumber: quotationNumber ?? '',
