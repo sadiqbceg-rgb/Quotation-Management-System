@@ -9,7 +9,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installGasFakes, type GasEnvironment } from './__fixtures__/gas-fakes';
 import { ACTIONS, handlePost } from './main';
-import { provisionFirstAdmin } from './auth/provisioning';
+import {
+  BOOTSTRAP_EMAIL_PROPERTY,
+  BOOTSTRAP_PASSWORD_PROPERTY,
+  provisionFirstAdmin,
+  runProvisioning,
+} from './auth/provisioning';
 import { createUser } from './sheets/users-repository';
 import { createPasswordRecord } from './auth/password';
 import { issueToken } from './auth/token';
@@ -400,6 +405,44 @@ describe('first-admin provisioning', () => {
   it('is not reachable through the action table', () => {
     expect(Object.keys(ACTIONS)).not.toContain('auth.provisionFirstAdmin');
     expect(Object.keys(ACTIONS)).not.toContain('provisionFirstAdmin');
+  });
+
+  it('creates the account from the bootstrap Script Properties', () => {
+    env.properties.values.set(BOOTSTRAP_EMAIL_PROPERTY, 'owner@speedxksa.com');
+    env.properties.values.set(BOOTSTRAP_PASSWORD_PROPERTY, 'a-long-enough-password');
+
+    runProvisioning();
+
+    expect(
+      call('auth.login', { email: 'owner@speedxksa.com', password: 'a-long-enough-password' }).ok,
+    ).toBe(true);
+  });
+
+  it('deletes the bootstrap properties so the password does not linger', () => {
+    env.properties.values.set(BOOTSTRAP_EMAIL_PROPERTY, 'owner@speedxksa.com');
+    env.properties.values.set(BOOTSTRAP_PASSWORD_PROPERTY, 'a-long-enough-password');
+
+    runProvisioning();
+
+    expect(env.properties.values.has(BOOTSTRAP_EMAIL_PROPERTY)).toBe(false);
+    expect(env.properties.values.has(BOOTSTRAP_PASSWORD_PROPERTY)).toBe(false);
+  });
+
+  it('clears the bootstrap properties even when provisioning is refused', () => {
+    // An account already exists, so provisioning declines — the password must
+    // still not be left sitting in project settings.
+    seedUser('existing@speedxksa.com', 'Admin');
+    env.properties.values.set(BOOTSTRAP_EMAIL_PROPERTY, 'owner@speedxksa.com');
+    env.properties.values.set(BOOTSTRAP_PASSWORD_PROPERTY, 'a-long-enough-password');
+
+    runProvisioning();
+
+    expect(env.properties.values.has(BOOTSTRAP_PASSWORD_PROPERTY)).toBe(false);
+  });
+
+  it('does nothing useful when the bootstrap properties are absent', () => {
+    runProvisioning();
+    expect(call('auth.login', { email: 'owner@speedxksa.com', password: 'x' }).ok).toBe(false);
   });
 });
 

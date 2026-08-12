@@ -131,6 +131,58 @@ deployment at a previous version rather than re-pushing code.
 
 ---
 
+## Creating the first Admin
+
+There is no default account and no self-registration, so the first Admin is
+created out of band. It never goes over HTTP: the endpoint is public, and an
+unauthenticated "create the first admin" action would be a takeover primitive
+for whoever called it first.
+
+Prerequisites: `TRACKING_SPREADSHEET_ID`, `PASSWORD_PEPPER` and
+`SESSION_HMAC_SECRET` must already be set. Drive is not needed yet.
+
+1. Generate a strong password (do not reuse one):
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(18).toString('base64url'))"
+   ```
+
+2. In the Apps Script editor, open **Project Settings → Script Properties** and
+   add two temporary properties:
+
+   | Property                   | Value                     |
+   | -------------------------- | ------------------------- |
+   | `BOOTSTRAP_ADMIN_EMAIL`    | the administrator's email |
+   | `BOOTSTRAP_ADMIN_PASSWORD` | the password from step 1  |
+
+3. Open the **Editor**, select `runProvisioning` in the function dropdown, and
+   press **Run**. Authorise the script if prompted.
+
+4. Read the execution log. Expect:
+
+   ```
+   Admin account created for someone@yourcompany.com.
+   The bootstrap properties have been deleted. …
+   ```
+
+5. Confirm both bootstrap properties are gone from Script Properties. They are
+   deleted automatically — _before_ the account is created, so a failure cannot
+   leave the password behind — but check anyway.
+
+6. Deliver the password to the person out of band. Never send it in the same
+   message as the application URL.
+
+7. Sign in through the web app and confirm the role shows as **Admin**.
+
+`provisionFirstAdmin` refuses to run once any account exists, so it cannot be
+used to quietly add a second Admin later. Further accounts go through the
+`admin.createUser` action, which requires an existing Admin session.
+
+If you lose the only Admin password: delete that row from the `Users` sheet and
+repeat this procedure.
+
+---
+
 ## Password hashing — measure before go-live
 
 `hashPassword` uses PBKDF2-HMAC-SHA256 with a per-user salt, a per-record
