@@ -117,6 +117,27 @@ export function messageOf(error: unknown): string {
   return error instanceof AppError ? userMessageForCode(error.code) : USER_MESSAGES.INTERNAL_ERROR;
 }
 
+/**
+ * The message for a failure whose SERVER text carries information the UI cannot
+ * reconstruct.
+ *
+ * Only `VALIDATION_FAILED` is treated this way, and only deliberately. Those
+ * messages are composed by our own handlers as user-facing business sentences —
+ * "…is the authorized person on a draft quotation that has not been issued yet
+ * (draft-77)". Replacing that with "Please correct the highlighted fields" is
+ * actively unhelpful when there is no highlighted field on screen to correct.
+ *
+ * Every other code keeps its generic message: those can be reached from a
+ * caught exception and may carry internal detail (§19.9). Use `messageOf`
+ * unless the server genuinely knows something the screen does not.
+ */
+export function businessMessageOf(error: unknown): string {
+  if (error instanceof AppError && error.code === 'VALIDATION_FAILED' && error.message.length > 0) {
+    return error.message;
+  }
+  return messageOf(error);
+}
+
 /** The message with the requestId appended, for plain text contexts. */
 export function describeError(error: unknown): string {
   if (error instanceof AppError) {

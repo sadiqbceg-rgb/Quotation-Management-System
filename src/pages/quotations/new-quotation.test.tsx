@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import NewQuotationPage from '@/pages/quotations/new';
 import * as quotationService from '@/services/quotation/quotation-service';
+import * as signatoryService from '@/services/signatories/signatory-service';
 import { AppError } from '@/services/api/errors';
+import { base64Png } from '@shared/signature';
 import { renderWithProviders, TEST_ONLY_ADMIN, TEST_ONLY_USER } from '@/__fixtures__/test-render';
 
 const SAVE_RESULT = {
@@ -15,15 +17,50 @@ const SAVE_RESULT = {
   updatedAt: '2026-08-11T00:00:00Z',
 };
 
+/** Obviously synthetic, and the only signatory these tests know about. */
+const TEST_ONLY_PERSON = {
+  id: 'person-1',
+  name: 'TEST_ONLY_Signatory',
+  designation: 'TEST_ONLY Designation',
+  companyName: 'TEST_ONLY Company',
+  country: 'TEST_ONLY Country',
+  email: 'test-only.signatory@example.invalid',
+  phone: '+966 50 000 0000',
+  hasSignature: true,
+  selectable: true,
+  active: true,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+};
+
+/** A 1x1 transparent PNG. Not a signature, and not a picture of anything. */
+const TEST_ONLY_TINY_PNG = base64Png(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+);
+
+/**
+ * Everything finalizing requires.
+ *
+ * Phase 06 added the signatory to that list (PRD §36): a quotation cannot be
+ * issued without one, so it belongs here rather than in each test.
+ */
 async function fillRequiredFields(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await user.type(screen.getByLabelText(/quotation for/i), 'TEST_ONLY manpower supply');
   await user.type(screen.getByLabelText(/client name/i), 'TEST_ONLY Contact');
-  await user.type(screen.getByLabelText(/company name/i), 'TEST_ONLY Client Co.');
+  await user.type(screen.getByLabelText(/^company name/i), 'TEST_ONLY Client Co.');
   await user.type(screen.getByLabelText(/address/i), 'TEST_ONLY Address');
+
+  await user.selectOptions(
+    await screen.findByRole('combobox', { name: /authorized person/i }),
+    'person-1',
+  );
+  await screen.findByAltText(/signature of/i);
 }
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.spyOn(signatoryService, 'listPersons').mockResolvedValue([TEST_ONLY_PERSON]);
+  vi.spyOn(signatoryService, 'fetchSignature').mockResolvedValue(TEST_ONLY_TINY_PNG);
 });
 
 afterEach(() => {

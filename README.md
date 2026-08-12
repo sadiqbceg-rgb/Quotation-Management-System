@@ -105,8 +105,8 @@ build and tests green.
 | 02 Authentication         | complete          |
 | 03 Quotation Core         | complete          |
 | 04 Item Categories        | complete          |
-| **05 Terms & Conditions** | **complete**      |
-| 06 Authorized Persons     | not started       |
+| 05 Terms & Conditions     | complete          |
+| **06 Authorized Persons** | **complete**      |
 | 07 Quotation Document     | not started       |
 | 08 PDF Generation         | not started       |
 | 09 DOCX Generation        | not started       |

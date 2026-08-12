@@ -13,8 +13,10 @@ import { useQuotationForm } from '@/hooks/useQuotationForm';
 import { useLineItems } from '@/hooks/useLineItems';
 import { useQuotationTerms } from '@/hooks/useQuotationTerms';
 import { useQuotationTotals } from '@/hooks/useQuotationTotals';
+import { useAuthorizedPersons } from '@/hooks/useAuthorizedPersons';
 import { QuotationItemsSection } from '@/components/items/QuotationItemsSection';
 import { QuotationTermsSection } from '@/components/terms/QuotationTermsSection';
+import { AuthorizedPersonSection } from '@/components/signatories/AuthorizedPersonSection';
 import { saveQuotation } from '@/services/quotation/quotation-service';
 import { AppError, messageOf } from '@/services/api/errors';
 import { formatDisplayDate } from '@/utils/format-date';
@@ -45,6 +47,7 @@ export default function NewQuotationPage() {
 
   const lineItems = useLineItems();
   const terms = useQuotationTerms();
+  const signatories = useAuthorizedPersons();
 
   const vatEnabled = watch('vatEnabled');
   const vatRatePercent = watch('vatRatePercent');
@@ -89,13 +92,34 @@ export default function NewQuotationPage() {
   const token = state.status === 'authenticated' ? state.token : null;
   const isAdmin = state.status === 'authenticated' && state.user.role === 'Admin';
 
+  const [personError, setPersonError] = useState<string | null>(null);
+
   const submit = async (values: QuotationFormValues, finalize: boolean): Promise<void> => {
     if (token === null) return;
 
+    /*
+     * A signature that will not load blocks issuing the quotation.
+     *
+     * The server enforces the same rule, but stopping here keeps the message
+     * next to the field. Silently producing a document with no signature is the
+     * one outcome that must not be possible.
+     */
+    if (finalize && signatories.blocksDocument) {
+      const message =
+        signatories.selected === null
+          ? 'Select an authorized person before creating the quotation.'
+          : 'The signature image for this person could not be loaded, so the quotation cannot be issued yet.';
+
+      setPersonError(message);
+      show({ variant: 'error', message });
+      return;
+    }
+
+    setPersonError(null);
     setBusy(finalize ? 'finalize' : 'draft');
     try {
       const result = await saveQuotation(
-        toPayload(values, lineItems.items, terms.terms, tokenContext),
+        toPayload(values, lineItems.items, terms.terms, tokenContext, signatories.snapshot),
         finalize,
         token,
       );
@@ -192,9 +216,10 @@ export default function NewQuotationPage() {
           }}
         />
 
-        <Card title="Authorized Person">
-          <PhasePlaceholder phase="06 (Authorized Persons)" feature="Signatory selection" />
-        </Card>
+        <AuthorizedPersonSection
+          signatories={signatories}
+          error={personError ?? undefined}
+        />
 
         <Card title="Preview and Documents">
           <PhasePlaceholder

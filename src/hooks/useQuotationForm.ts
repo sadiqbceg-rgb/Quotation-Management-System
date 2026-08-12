@@ -12,6 +12,7 @@ import type { TermTokenContext } from '@shared/term-tokens';
 import type { QuotationPayload } from '@/services/quotation/quotation-service';
 import type { EditorLineItem } from './useLineItems';
 import type { EditorTerm } from './useQuotationTerms';
+import type { PersonSnapshot } from './useAuthorizedPersons';
 
 export const DEFAULT_VAT_RATE_PERCENT = DEFAULT_VAT_RATE_BASIS_POINTS / 100;
 
@@ -85,6 +86,7 @@ export function useQuotationForm(options: UseQuotationFormOptions = {}) {
       lines: readonly EditorLineItem[] = [],
       terms: readonly EditorTerm[] = [],
       tokenContext?: TermTokenContext,
+      authorizedPerson?: PersonSnapshot | null,
     ): QuotationPayload => {
       const payload: QuotationPayload = {
         draftId: draftIdRef.current,
@@ -131,6 +133,18 @@ export function useQuotationForm(options: UseQuotationFormOptions = {}) {
         closingParagraph: values.closingParagraph,
         vatRateBasisPoints: values.vatEnabled ? Math.round(values.vatRatePercent * 100) : 0,
       };
+
+      /*
+       * Only the id is authoritative.
+       *
+       * The rest of the snapshot travels for readability, but the server
+       * discards it and rebuilds every field from the stored record (§11.3).
+       * Otherwise a caller talking to the public endpoint directly could issue a
+       * quotation signed by someone who never agreed to sign it.
+       */
+      if (authorizedPerson !== undefined && authorizedPerson !== null) {
+        payload.authorizedPerson = authorizedPerson;
+      }
 
       if (values.discountEnabled) {
         payload.discountRateBasisPoints = Math.round(values.discountRatePercent * 100);

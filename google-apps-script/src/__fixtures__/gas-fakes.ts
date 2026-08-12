@@ -77,16 +77,20 @@ export function createUtilitiesFake() {
   };
 }
 
-/** `newBlob(bytes).getDataAsString()` — used when decoding a token body. */
+/**
+ * `newBlob(bytes).getDataAsString()` — used when decoding a token body, and
+ * `newBlob(bytes, mimeType, name)` when writing a signature to Drive.
+ */
 export function createUtilitiesFakeWithBlobDecode() {
   const base = createUtilitiesFake();
   return {
     ...base,
-    newBlob(value: string | number[]) {
+    newBlob(value: string | number[], _mimeType?: string, name?: string) {
       const buffer = toBuffer(value);
       return {
         getBytes: (): number[] => toSigned(buffer),
         getDataAsString: (): string => buffer.toString('utf8'),
+        getName: (): string => name ?? '',
       };
     },
   };
@@ -99,6 +103,7 @@ export function createUtilitiesFakeWithBlobDecode() {
 export interface PropertiesFake {
   service: { getScriptProperties: () => unknown };
   values: Map<string, string>;
+  get: (key: string) => string | undefined;
 }
 
 export function createPropertiesFake(initial: Record<string, string> = {}): PropertiesFake {
@@ -115,7 +120,11 @@ export function createPropertiesFake(initial: Record<string, string> = {}): Prop
     getProperties: (): Record<string, string> => Object.fromEntries(values),
   };
 
-  return { service: { getScriptProperties: () => properties }, values };
+  return {
+    service: { getScriptProperties: () => properties },
+    values,
+    get: (key: string) => values.get(key),
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -331,6 +340,165 @@ export function createContentServiceFake() {
 }
 
 /* -------------------------------------------------------------------------- */
+/* DriveApp                                                                   */
+/* -------------------------------------------------------------------------- */
+
+export interface DriveFileFake {
+  id: string;
+  name: string;
+  mimeType: string;
+  bytes: number[];
+  folderId: string;
+}
+
+export interface DriveFake {
+  service: unknown;
+  files: () => DriveFileFake[];
+  folderPath: (folderId: string) => string;
+  /** Files in a folder, by the folder's path from the root. */
+  filesIn: (path: string) => DriveFileFake[];
+  /** Every sharing call made. Must stay empty: signatures are never shared. */
+  sharingCalls: () => string[];
+  /** Make the next createFile throw, to exercise the failure path. */
+  failNextCreate: (message: string) => void;
+}
+
+/**
+ * A minimal in-memory Drive.
+ *
+ * Records sharing attempts rather than implementing them, so a test can assert
+ * that nothing in the signature path ever tries to make a file public.
+ */
+export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
+  const rootId = rootIdOrUndefined ?? 'test-only-drive-root';
+
+  interface FolderNode {
+    id: string;
+    name: string;
+    parentId: string | null;
+  }
+
+  const folders = new Map<string, FolderNode>([[rootId, { id: rootId, name: '', parentId: null }]]);
+  const files = new Map<string, DriveFileFake>();
+  const sharing: string[] = [];
+
+  let sequence = 0;
+  let pendingFailure: string | null = null;
+
+  function nextId(prefix: string): string {
+    sequence += 1;
+    return `${prefix}-${String(sequence)}`;
+  }
+
+  function pathOf(folderId: string): string {
+    const segments: string[] = [];
+    let current = folders.get(folderId);
+
+    while (current !== undefined && current.parentId !== null) {
+      segments.unshift(current.name);
+      current = folders.get(current.parentId);
+    }
+    return segments.join('/');
+  }
+
+  function buildFile(file: DriveFileFake): unknown {
+    return {
+      getId: (): string => file.id,
+      getName: (): string => file.name,
+      getBlob: () => ({
+        getBytes: (): number[] => file.bytes,
+        getName: (): string => file.name,
+      }),
+      setSharing: (access: string): void => {
+        sharing.push(`file:${file.id}:${access}`);
+      },
+      getDownloadUrl: (): string => {
+        sharing.push(`file:${file.id}:downloadUrl`);
+        return `https://drive.google.com/uc?id=${file.id}`;
+      },
+    };
+  }
+
+  function buildFolder(node: FolderNode): unknown {
+    return {
+      getId: (): string => node.id,
+      getName: (): string => node.name,
+
+      getFoldersByName: (name: string) => {
+        const matches = [...folders.values()].filter(
+          (entry) => entry.parentId === node.id && entry.name === name,
+        );
+        let index = 0;
+        return {
+          hasNext: (): boolean => index < matches.length,
+          next: (): unknown => {
+            const match = matches[index];
+            index += 1;
+            if (match === undefined) throw new Error('No such folder.');
+            return buildFolder(match);
+          },
+        };
+      },
+
+      createFolder: (name: string): unknown => {
+        const created: FolderNode = { id: nextId('folder'), name, parentId: node.id };
+        folders.set(created.id, created);
+        return buildFolder(created);
+      },
+
+      createFile: (blob: { getBytes: () => number[]; getName: () => string }): unknown => {
+        if (pendingFailure !== null) {
+          const message = pendingFailure;
+          pendingFailure = null;
+          throw new Error(message);
+        }
+
+        const file: DriveFileFake = {
+          id: nextId('file'),
+          name: blob.getName(),
+          mimeType: 'image/png',
+          bytes: blob.getBytes(),
+          folderId: node.id,
+        };
+        files.set(file.id, file);
+        return buildFile(file);
+      },
+
+      setSharing: (access: string): void => {
+        sharing.push(`folder:${node.id}:${access}`);
+      },
+    };
+  }
+
+  return {
+    service: {
+      Access: { PRIVATE: 'PRIVATE', ANYONE_WITH_LINK: 'ANYONE_WITH_LINK' },
+      Permission: { VIEW: 'VIEW', NONE: 'NONE' },
+
+      getFolderById: (id: string): unknown => {
+        const node = folders.get(id);
+        if (node === undefined) throw new Error(`No folder with id ${id}`);
+        return buildFolder(node);
+      },
+
+      getFileById: (id: string): unknown => {
+        const file = files.get(id);
+        if (file === undefined) throw new Error(`No file with id ${id}`);
+        return buildFile(file);
+      },
+    },
+
+    files: () => [...files.values()],
+    folderPath: pathOf,
+    filesIn: (path: string) => [...files.values()].filter((file) => pathOf(file.folderId) === path),
+    sharingCalls: () => [...sharing],
+    failNextCreate: (message: string) => {
+      pendingFailure = message;
+    },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Installation                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -339,6 +507,7 @@ export interface GasEnvironment {
   cache: CacheFake;
   spreadsheet: SpreadsheetFake;
   lock: LockFake;
+  drive: DriveFake;
 }
 
 /**
@@ -361,8 +530,10 @@ export function installGasFakes(
   const cacheFake = createCacheFake();
   const spreadsheetFake = createSpreadsheetFake();
   const lockFake = createLockFake();
+  const driveFake = createDriveFake(propertiesFake.get('DRIVE_ROOT_FOLDER_ID'));
 
   stub('Utilities', createUtilitiesFakeWithBlobDecode());
+  stub('DriveApp', driveFake.service);
   stub('PropertiesService', propertiesFake.service);
   stub('CacheService', cacheFake.service);
   stub('ContentService', createContentServiceFake());
@@ -383,5 +554,6 @@ export function installGasFakes(
     cache: cacheFake,
     spreadsheet: spreadsheetFake,
     lock: lockFake,
+    drive: driveFake,
   };
 }

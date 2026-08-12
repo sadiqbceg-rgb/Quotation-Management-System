@@ -41,6 +41,11 @@ import {
   validateQuotationTerms,
   type ValidatedQuotationTerm,
 } from './term-validator';
+import {
+  validatePersonSnapshot,
+  type StoredPersonLookup,
+  type ValidatedPersonSnapshot,
+} from './person-validator';
 
 export interface ValidatedClient {
   clientName: string;
@@ -71,6 +76,8 @@ export interface ValidatedQuotation {
   /** The snapshot terms this quotation carries. Order is positional (§10.3). */
   terms: ValidatedQuotationTerm[];
   closingParagraph: string;
+  /** Rebuilt from the stored record, never trusted from the client (§11.3). */
+  authorizedPerson: ValidatedPersonSnapshot | null;
   totals: Totals;
   discountRateBasisPoints: number | undefined;
   vatRateBasisPoints: number | undefined;
@@ -259,9 +266,20 @@ function validateDate(value: string, fields: Fields): void {
  * being finalized, matching PRD §36: a draft may be incomplete, but a document
  * may never be produced from one.
  */
+export interface ValidateQuotationOptions {
+  requireComplete: boolean;
+  /**
+   * How to resolve an authorized person by id.
+   *
+   * Injected rather than imported so this module stays free of a Sheets
+   * dependency and can be exercised without a spreadsheet.
+   */
+  lookupPerson: (id: string) => StoredPersonLookup | null;
+}
+
 export function validateQuotation(
   payload: unknown,
-  options: { requireComplete: boolean },
+  options: ValidateQuotationOptions,
 ): ValidatedQuotation {
   const source = record(payload, 'Quotation');
   assertNoPollutedKeys(source);
@@ -305,6 +323,13 @@ export function validateQuotation(
   const terms = validateQuotationTerms(source['terms'], fields);
   const closingParagraph = validateClosingParagraph(source['closingParagraph'], fields);
 
+  // Rebuilt from storage, so the text a caller sent is discarded. The endpoint
+  // is public; accepting a client-supplied name and designation would let
+  // someone issue a quotation signed by a person who never agreed to sign it.
+  const authorizedPerson = validatePersonSnapshot(source['authorizedPerson'], options.lookupPerson, {
+    requireComplete: options.requireComplete,
+  });
+
   const discountRateBasisPoints = integer(source, 'discountRateBasisPoints');
   const vatRateBasisPoints = integer(source, 'vatRateBasisPoints');
 
@@ -347,6 +372,7 @@ export function validateQuotation(
     lines,
     terms,
     closingParagraph,
+    authorizedPerson,
     totals,
     discountRateBasisPoints,
     vatRateBasisPoints,

@@ -5,6 +5,7 @@ import { createPasswordRecord } from '../auth/password';
 import { createUser } from '../sheets/users-repository';
 import { QUOTATION_RECORDS_SHEET_NAME } from '../sheets/quotation-records-sheet';
 import { readLastSequence } from '../sheets/counters-sheet';
+import { createPerson, setSignatureFileId } from '../sheets/persons-sheet';
 
 const PEPPER = 'test-only-pepper-not-a-real-key';
 const PASSWORD = 'TEST_ONLY_correct-horse-battery';
@@ -38,6 +39,31 @@ function callAnonymous(action: string, payload: unknown = {}): Envelope {
   return postRaw(JSON.stringify({ action, requestId: 'test-request', payload }));
 }
 
+/**
+ * The signatory every finalized quotation needs (PRD §36, Phase 06).
+ *
+ * Seeded directly through the repository rather than the Admin actions: these
+ * tests sign in as a User, and the point here is quotation behaviour, not the
+ * person library.
+ */
+let signatoryId: string;
+
+function seedSignatory(): string {
+  const created = createPerson({
+    id: 'TEST_ONLY-person-1',
+    name: 'TEST_ONLY_Signatory',
+    designation: 'TEST_ONLY Designation',
+    companyName: 'TEST_ONLY Company',
+    country: 'TEST_ONLY Country',
+    email: 'test-only.signatory@example.invalid',
+    phone: '+966 50 000 0000',
+  });
+
+  // A person with no signature cannot be finalized against.
+  setSignatureFileId(created, 'TEST_ONLY-signature-file');
+  return created.id;
+}
+
 /** A complete, valid quotation. Obviously synthetic — never production data. */
 function validQuotation(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -52,12 +78,14 @@ function validQuotation(overrides: Record<string, unknown> = {}): Record<string,
       address: 'TEST_ONLY Address, Riyadh',
     },
     lines: [{ category: 'Manpower', quantity: 40_000, unitPrice: 2000 }],
+    authorizedPerson: { id: signatoryId },
     ...overrides,
   };
 }
 
 beforeEach(() => {
   env = installGasFakes(vi.stubGlobal);
+  signatoryId = seedSignatory();
 
   const material = createPasswordRecord(PASSWORD, PEPPER, 1_000);
   createUser({

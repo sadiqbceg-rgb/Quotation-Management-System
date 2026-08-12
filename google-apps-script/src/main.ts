@@ -29,12 +29,13 @@ import { isTokenRevoked } from './auth/session';
 import { nowSeconds, shouldRenew, issueToken, verifyToken } from './auth/token';
 import { isFullyConfigured, missingProperties, requireProperty } from './config/properties';
 import * as items from './items/handlers';
+import * as persons from './persons/handlers';
 import * as quotation from './quotation/handlers';
 import * as terms from './terms/handlers';
 import { ApiError, type Caller, type ErrorCode, type HandlerContext } from './errors';
 import * as users from './sheets/users-repository';
 
-export const API_VERSION = '0.5.0';
+export const API_VERSION = '0.6.0';
 
 /* -------------------------------------------------------------------------- */
 /* Envelope                                                                   */
@@ -165,6 +166,38 @@ export const ACTIONS: Record<string, ActionDefinition> = {
   'admin.importReferenceTerms': {
     access: 'Admin',
     handler: terms.importReference,
+  },
+
+  /*
+   * Authorized persons.
+   *
+   * Reading is `authenticated` — a User must be able to pick a signatory and
+   * see the mark that will print on the quotation they are producing. Every
+   * write, and the signature upload, is Admin only (§11.4).
+   */
+  'persons.list': {
+    access: 'authenticated',
+    handler: persons.list,
+  },
+  'persons.getSignature': {
+    access: 'authenticated',
+    handler: persons.getSignature,
+  },
+  'persons.create': {
+    access: 'Admin',
+    handler: persons.create,
+  },
+  'persons.update': {
+    access: 'Admin',
+    handler: persons.update,
+  },
+  'persons.deactivate': {
+    access: 'Admin',
+    handler: persons.deactivate,
+  },
+  'persons.uploadSignature': {
+    access: 'Admin',
+    handler: persons.uploadSignature,
   },
 };
 

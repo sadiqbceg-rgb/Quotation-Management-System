@@ -240,6 +240,50 @@ them through the ordinary "Add term" flow.
 
 ---
 
+## Signature images
+
+`DRIVE_ROOT_FOLDER_ID` must be set before the first signature upload. The
+backend creates `_assets/signatures/` under that folder on first use; nothing
+else needs to exist in advance.
+
+```
+Quotation Archive/            ← DRIVE_ROOT_FOLDER_ID
+└── _assets/
+    └── signatures/           ← created automatically, PRIVATE
+```
+
+**The repository contains no signature file, and never will.** The library ships
+empty. An Admin uploads real signatures through the Authorized Persons page once
+the company supplies them.
+
+What the server enforces on upload (PRD §33 item 14):
+
+| Check      | Rule                                                                         |
+| ---------- | ---------------------------------------------------------------------------- |
+| Format     | PNG **magic bytes**, not the MIME type or the filename extension             |
+| Size       | ≤ 1 MB                                                                       |
+| Dimensions | 100–10,000 px wide; below 600 px is accepted with a warning                  |
+| Filename   | Sanitised to `[A-Za-z0-9._-]`; the stored name is derived from the person id |
+
+A PNG with no alpha channel is **accepted with a warning**, not refused. It is a
+valid image, and cropping or background removal is the company's decision — but
+it will paint a white box over the letterhead, so the warning says exactly that.
+
+Two properties of the storage matter more than the rest:
+
+- **Nothing is ever shared.** No `setSharing`, no `getDownloadUrl`, no public
+  link. `persons.getSignature` — authenticated, returning base64 — is the only
+  route out of Drive, and a test asserts no sharing call is made.
+- **Replacing a signature writes a NEW file.** The superseded file stays in
+  Drive, so a quotation issued last month still resolves to the image it was
+  actually signed with.
+
+An authorized person is **not** a login account. `AuthorizedPersons` and `Users`
+are separate sheets with no shared key: a row here grants no access, and a user
+account signs nothing.
+
+---
+
 ## Password hashing — measure before go-live
 
 `hashPassword` uses PBKDF2-HMAC-SHA256 with a per-user salt, a per-record
@@ -279,7 +323,7 @@ the random salt.
 | 03 _(done)_ | Quotation numbering (`LockService` + `Counters` + idempotency), quotation persistence |
 | 04 _(done)_ | `Items` sheet and the item catalogue actions                                          |
 | 05 _(done)_ | `Terms` sheet, the T&C actions, and `admin.importReferenceTerms`                      |
-| 06          | Authorized persons and signature storage                                              |
+| 06 _(done)_ | `AuthorizedPersons` sheet, signature upload, private Drive `_assets/signatures/`      |
 | 10          | Drive folders and uploads                                                             |
 | 11          | Sheets tracking                                                                       |
 | 12          | Security hardening                                                                    |

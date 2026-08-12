@@ -46,6 +46,8 @@ export const ACTION_NAMES = [
   'persons.update',
   'persons.deactivate',
   'persons.uploadSignature',
+  // Authenticated, and the ONLY route out of Drive for a signature image.
+  // There is no public URL for one anywhere in the system.
   'persons.getSignature',
 
   // Clients library

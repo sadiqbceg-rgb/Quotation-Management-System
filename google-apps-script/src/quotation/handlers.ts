@@ -12,6 +12,7 @@ import { isValidQuotationNumber } from '@shared/numbering';
 import { writeAudit } from '../audit/audit-log';
 import { quotationCodes } from '../config/properties';
 import { ApiError, type Caller, type HandlerContext } from '../errors';
+import { lookupForSnapshot } from '../persons/handlers';
 import { reserveQuotationNumber } from '../quotation-number/reserve';
 import * as records from '../sheets/quotation-records-sheet';
 import { validateQuotation } from '../validation/quotation-validator';
@@ -103,7 +104,10 @@ export function save(payload: unknown, context: HandlerContext): SaveResponse {
   const body = asRecord(payload);
 
   const finalize = body['finalize'] === true;
-  const validated = validateQuotation(body['quotation'], { requireComplete: finalize });
+  const validated = validateQuotation(body['quotation'], {
+    requireComplete: finalize,
+    lookupPerson: lookupForSnapshot,
+  });
 
   const existing = records.findByDraftId(validated.draftId);
 
@@ -152,6 +156,9 @@ export function save(payload: unknown, context: HandlerContext): SaveResponse {
     // able to change what this client was sent.
     terms: validated.terms,
     closingParagraph: validated.closingParagraph,
+    // A snapshot, not a live reference (§6.3): editing the person later must
+    // not change the signature block on a quotation already issued.
+    authorizedPerson: validated.authorizedPerson,
     totals: validated.totals,
     discountRateBasisPoints: validated.discountRateBasisPoints,
     vatRateBasisPoints: validated.vatRateBasisPoints,

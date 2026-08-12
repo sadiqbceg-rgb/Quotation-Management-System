@@ -42,6 +42,20 @@ export interface QuotationPayload {
   lines: QuotationLinePayload[];
   terms?: QuotationTermPayload[];
   closingParagraph?: string;
+  /**
+   * The signatory. Only `id` is authoritative — the server rebuilds every other
+   * field from the stored record, so what is sent here cannot forge a signature
+   * block (IMPLEMENTATION_PLAN.md §11.3).
+   */
+  authorizedPerson?: {
+    id: string;
+    name: string;
+    designation: string;
+    companyName: string;
+    country: string;
+    email: string;
+    phone: string;
+  };
   discountRateBasisPoints?: number;
   vatRateBasisPoints?: number;
   /** Echoed on an update. The server ignores it and re-reads storage. */
