@@ -277,7 +277,7 @@ All tests must pass.
 - [ ] No Supabase, no PostgreSQL, no database dependency anywhere in `package.json`.
 - [ ] No dummy production data anywhere.
 - [ ] `git status` shows no modification to `PRD/` or `reference/`.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

@@ -38,7 +38,7 @@ The deliverable is a single new file: `quotation-implementation-plan/ANALYSIS.md
 
 # Prerequisites
 
-- Repository cloned; branch `claude/quotation-app-architecture-ycbwpa` checked out.
+- Repository cloned; branch `claude/quotation-app-implementation` checked out.
 - No prior phase is required.
 
 ---
@@ -197,7 +197,7 @@ There is no lint configuration in this phase. Confirm its absence explicitly and
 - [ ] All missing inputs are listed.
 - [ ] No application code was created.
 - [ ] No file in `PRD/` or `reference/` was modified — verify with `git status`.
-- [ ] Work committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Work committed to `claude/quotation-app-implementation`.
 
 ---
 

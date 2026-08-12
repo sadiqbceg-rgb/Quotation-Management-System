@@ -265,7 +265,7 @@ Generate real DOCX files, unzip them, and assert against the XML — do not test
 - [ ] No sample DOCX is committed; `reference/` is unmodified.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm test`, and the Playwright suite all pass.
 - [ ] Manual Word verification performed and its outcome reported.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

@@ -269,7 +269,7 @@ Generate real PDFs and re-parse them — do not assert only on the generator's i
 - [ ] No Arabic text is drawn by the renderer.
 - [ ] No sample PDF is committed; `reference/` is unmodified.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm test`, and the Playwright suite all pass.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

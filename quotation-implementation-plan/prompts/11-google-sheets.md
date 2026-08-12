@@ -291,7 +291,7 @@ Per PRD §37:
 - [ ] Monetary values are server-computed.
 - [ ] The production spreadsheet contains zero dummy rows.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run gas:build`, `npm test` all clean.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

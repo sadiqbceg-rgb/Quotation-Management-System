@@ -228,7 +228,7 @@ src/services/api/client.ts                              (extended)
 - [ ] Audit entries are written for login success, failure, lockout, and logout.
 - [ ] No user accounts, passwords, or credentials are committed.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run gas:build`, `npm test` all clean.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

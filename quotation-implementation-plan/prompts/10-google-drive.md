@@ -284,7 +284,7 @@ Per PRD §37:
 - [ ] Magic-byte, size, and path validation are enforced.
 - [ ] No test data exists in the production Drive.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run gas:build`, `npm test` all clean.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

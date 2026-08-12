@@ -275,7 +275,7 @@ Write a security test suite that fails if a control regresses:
 - [ ] `SECURITY.md` documents the model, the accepted risks (including the public endpoint), and the rotation procedures.
 - [ ] No dummy production data exists.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run gas:build`, `npm test` all clean.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

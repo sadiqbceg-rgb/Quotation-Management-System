@@ -280,7 +280,7 @@ Show clear, inline, per-field messages. Block document generation while any item
 - [ ] Validation blocks every invalid case in PRD §36, client-side and server-side.
 - [ ] No dummy items, prices, or quantities exist anywhere.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run gas:build`, `npm test` all clean.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

@@ -258,7 +258,7 @@ google-apps-script/src/validation/term-validator.ts
 - [ ] The closing paragraph is configurable and editable per quotation.
 - [ ] No invented terms and no dummy data exist anywhere.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run gas:build`, `npm test` all clean.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

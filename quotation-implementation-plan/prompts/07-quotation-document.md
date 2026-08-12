@@ -308,7 +308,7 @@ Assert structurally that the model is well-formed: block ordering matches the sp
 - [ ] Pre-export validation blocks incomplete quotations.
 - [ ] `git status` shows `reference/` unmodified.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm test` all clean.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

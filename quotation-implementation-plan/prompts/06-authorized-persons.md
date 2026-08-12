@@ -241,7 +241,7 @@ google-apps-script/src/validation/image-validator.ts     (magic-byte verificatio
 - [ ] No signature image was extracted from `reference/quotation-sample.pdf`.
 - [ ] `git status` shows `reference/` unmodified.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run gas:build`, `npm test` all clean.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

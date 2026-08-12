@@ -271,7 +271,7 @@ scripts/{verify-build,generate-secrets}.ts
 - [ ] Development and production are fully isolated.
 - [ ] **Nothing was deployed to production** unless the user explicitly instructed it.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run gas:build`, `npm test`, `npm run test:e2e` all pass.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

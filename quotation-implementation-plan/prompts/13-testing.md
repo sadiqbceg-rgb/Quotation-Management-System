@@ -274,7 +274,7 @@ This phase's scope is its testing requirement. In addition:
 - [ ] No test touches production Drive or Sheets.
 - [ ] Every bug found is fixed and listed in `TEST_REPORT.md`.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run gas:build`, `npm test`, `npm run test:e2e` all pass.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 

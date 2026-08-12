@@ -273,7 +273,7 @@ Reject with `VALIDATION_FAILED` and a per-field message (PRD §36):
 - [ ] Server-side validation and totals recomputation are enforced.
 - [ ] The system contains zero quotations until a real one is created.
 - [ ] `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run gas:build`, `npm test` all clean.
-- [ ] Committed to `claude/quotation-app-architecture-ycbwpa`.
+- [ ] Committed to `claude/quotation-app-implementation`.
 
 ---
 
