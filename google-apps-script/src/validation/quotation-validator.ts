@@ -36,6 +36,11 @@ import {
 } from '@shared/types';
 import { quotationCodes } from '../config/properties';
 import { ApiError } from '../errors';
+import {
+  validateClosingParagraph,
+  validateQuotationTerms,
+  type ValidatedQuotationTerm,
+} from './term-validator';
 
 export interface ValidatedClient {
   clientName: string;
@@ -63,6 +68,9 @@ export interface ValidatedQuotation {
   status: QuotationStatus;
   client: ValidatedClient;
   lines: ValidatedLine[];
+  /** The snapshot terms this quotation carries. Order is positional (§10.3). */
+  terms: ValidatedQuotationTerm[];
+  closingParagraph: string;
   totals: Totals;
   discountRateBasisPoints: number | undefined;
   vatRateBasisPoints: number | undefined;
@@ -292,6 +300,11 @@ export function validateQuotation(
     fields['lines'] = 'Add at least one quotation item.';
   }
 
+  // Terms are always validated, draft or not: the text is user-supplied and
+  // ends up in a sheet cell either way (§19.5).
+  const terms = validateQuotationTerms(source['terms'], fields);
+  const closingParagraph = validateClosingParagraph(source['closingParagraph'], fields);
+
   const discountRateBasisPoints = integer(source, 'discountRateBasisPoints');
   const vatRateBasisPoints = integer(source, 'vatRateBasisPoints');
 
@@ -332,6 +345,8 @@ export function validateQuotation(
     status,
     client,
     lines,
+    terms,
+    closingParagraph,
     totals,
     discountRateBasisPoints,
     vatRateBasisPoints,

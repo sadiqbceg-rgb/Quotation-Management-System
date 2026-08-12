@@ -148,6 +148,10 @@ export function save(payload: unknown, context: HandlerContext): SaveResponse {
     currency: 'SAR',
     client: validated.client,
     lines: validated.lines,
+    // Snapshot text, not a reference (§10.4). A later library edit must not be
+    // able to change what this client was sent.
+    terms: validated.terms,
+    closingParagraph: validated.closingParagraph,
     totals: validated.totals,
     discountRateBasisPoints: validated.discountRateBasisPoints,
     vatRateBasisPoints: validated.vatRateBasisPoints,

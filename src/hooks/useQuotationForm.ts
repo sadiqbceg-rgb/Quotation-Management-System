@@ -6,8 +6,12 @@ import { quotationFormSchema, type QuotationFormValues } from '@/schemas/quotati
 import { newDraftId } from '@/utils/uuid';
 import { todayIso } from '@/utils/format-date';
 import { DEFAULT_VAT_RATE_BASIS_POINTS } from '@shared/totals';
+import { DEFAULT_CLOSING_PARAGRAPH } from '@shared/company-defaults';
+import { resolveTermTokens } from '@shared/term-tokens';
+import type { TermTokenContext } from '@shared/term-tokens';
 import type { QuotationPayload } from '@/services/quotation/quotation-service';
 import type { EditorLineItem } from './useLineItems';
+import type { EditorTerm } from './useQuotationTerms';
 
 export const DEFAULT_VAT_RATE_PERCENT = DEFAULT_VAT_RATE_BASIS_POINTS / 100;
 
@@ -21,6 +25,9 @@ export function emptyQuotationForm(): QuotationFormValues {
     vatRatePercent: DEFAULT_VAT_RATE_PERCENT,
     discountEnabled: false,
     discountRatePercent: 0,
+    // Configuration, not a literal in a component — PRD §23 says the company
+    // will supply the final wording later.
+    closingParagraph: DEFAULT_CLOSING_PARAGRAPH,
     client: {
       clientName: '',
       companyName: '',
@@ -73,7 +80,12 @@ export function useQuotationForm(options: UseQuotationFormOptions = {}) {
    * happened at the input boundary — so nothing is re-parsed here.
    */
   const toPayload = useCallback(
-    (values: QuotationFormValues, lines: readonly EditorLineItem[] = []): QuotationPayload => {
+    (
+      values: QuotationFormValues,
+      lines: readonly EditorLineItem[] = [],
+      terms: readonly EditorTerm[] = [],
+      tokenContext?: TermTokenContext,
+    ): QuotationPayload => {
       const payload: QuotationPayload = {
         draftId: draftIdRef.current,
         quotationDate: values.quotationDate,
@@ -99,6 +111,24 @@ export function useQuotationForm(options: UseQuotationFormOptions = {}) {
           unit: line.unit,
           remarks: line.remarks,
         })),
+        /*
+         * `body` is the SNAPSHOT — the resolved text this quotation was saved
+         * with (§6.3, §10.4). `bodyTemplate` travels alongside it purely so
+         * reopening the quotation gives the user their template back to edit;
+         * the document renders `body`.
+         */
+        terms: terms.map((term, index) => ({
+          id: term.id,
+          title: term.title,
+          body:
+            tokenContext === undefined
+              ? term.bodyTemplate
+              : resolveTermTokens(term.bodyTemplate, tokenContext).text,
+          bodyTemplate: term.bodyTemplate,
+          sortOrder: index,
+          source: term.source,
+        })),
+        closingParagraph: values.closingParagraph,
         vatRateBasisPoints: values.vatEnabled ? Math.round(values.vatRatePercent * 100) : 0,
       };
 

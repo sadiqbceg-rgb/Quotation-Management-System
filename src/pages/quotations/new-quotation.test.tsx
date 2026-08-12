@@ -32,15 +32,34 @@ afterEach(() => {
 
 /* -------------------------------------------------------------------------- */
 
+type FetchSpy = ReturnType<typeof spyOnFetch>;
+
+function spyOnFetch() {
+  return vi.fn((_url: string, _init?: { body?: string }) =>
+    Promise.reject(new TypeError('offline')),
+  );
+}
+
+/** Every backend action a set of fetch calls attempted. */
+function actionsCalled(fetchSpy: FetchSpy): string[] {
+  return fetchSpy.mock.calls.map(
+    (call) => (JSON.parse(call[1]?.body ?? '{}') as { action?: string }).action ?? '',
+  );
+}
+
 describe('PRD §35 — opening the form creates nothing', () => {
-  it('makes no network request on mount', async () => {
-    const fetchSpy = vi.fn(() => Promise.reject(new TypeError('offline')));
+  it('attempts no writing action on mount', async () => {
+    const fetchSpy = spyOnFetch();
     vi.stubGlobal('fetch', fetchSpy);
 
     renderWithProviders(<NewQuotationPage />, { user: TEST_ONLY_USER });
     await Promise.resolve();
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // Reading the Terms & Conditions library to render the checkboxes is fine.
+    // What must never happen on mount is a quotation being created or a number
+    // being burned — those are irreversible.
+    expect(actionsCalled(fetchSpy)).not.toContain('quotation.save');
+    expect(actionsCalled(fetchSpy)).not.toContain('quotation.reserveNumber');
   });
 
   it('does not reserve a quotation number on mount', () => {

@@ -97,13 +97,21 @@ describe('placeholder pages', () => {
   });
 
   it('does not reserve a quotation number when the New Quotation page opens', async () => {
-    // PRD §35: opening the application must not create a quotation.
-    const fetchSpy = vi.fn(() => Promise.reject(new TypeError('offline')));
+    // PRD §35: opening the application must not create a quotation. Reading a
+    // library to populate the form is not that; issuing a number is.
+    const fetchSpy = vi.fn((_url: string, _init?: { body?: string }) =>
+      Promise.reject(new TypeError('offline')),
+    );
     vi.stubGlobal('fetch', fetchSpy);
 
     renderInShell('/quotations/new', <NewQuotationPage />);
     await Promise.resolve();
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    const actions = fetchSpy.mock.calls.map(
+      (call) => (JSON.parse(call[1]?.body ?? '{}') as { action?: string }).action ?? '',
+    );
+
+    expect(actions).not.toContain('quotation.save');
+    expect(actions).not.toContain('quotation.reserveNumber');
   });
 });

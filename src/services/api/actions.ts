@@ -37,6 +37,7 @@ export const ACTION_NAMES = [
   'terms.create',
   'terms.update',
   'terms.deactivate',
+  'terms.reorder',
   'admin.importReferenceTerms',
 
   // Phase 06

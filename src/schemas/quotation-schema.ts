@@ -54,6 +54,8 @@ export const quotationFormSchema = z.object({
   vatRatePercent: z.number().min(0).max(100),
   discountEnabled: z.boolean(),
   discountRatePercent: z.number().min(0).max(100),
+  /** PRD §23. Defaults from Company Settings, editable per quotation. */
+  closingParagraph: required('A closing paragraph', TEXT_LIMITS.closingParagraph),
   client: clientSchema,
 });
 
@@ -68,6 +70,10 @@ export type QuotationFormValues = z.infer<typeof quotationFormSchema>;
  */
 export const quotationDraftSchema = quotationFormSchema.extend({
   quotationFor: trimmed.max(TEXT_LIMITS.quotationFor.max, 'Quotation For is too long'),
+  closingParagraph: trimmed.max(
+    TEXT_LIMITS.closingParagraph.max,
+    'The closing paragraph is too long',
+  ),
   client: clientSchema.partial().extend({
     clientName: trimmed.max(TEXT_LIMITS.clientName.max, 'Too long'),
     companyName: trimmed.max(TEXT_LIMITS.companyName.max, 'Too long'),

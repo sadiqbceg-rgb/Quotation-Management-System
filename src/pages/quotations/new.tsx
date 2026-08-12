@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { PageHeader } from '@/components/common/PageHeader';
@@ -11,10 +11,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { useQuotationForm } from '@/hooks/useQuotationForm';
 import { useLineItems } from '@/hooks/useLineItems';
+import { useQuotationTerms } from '@/hooks/useQuotationTerms';
 import { useQuotationTotals } from '@/hooks/useQuotationTotals';
 import { QuotationItemsSection } from '@/components/items/QuotationItemsSection';
+import { QuotationTermsSection } from '@/components/terms/QuotationTermsSection';
 import { saveQuotation } from '@/services/quotation/quotation-service';
 import { AppError, messageOf } from '@/services/api/errors';
+import { formatDisplayDate } from '@/utils/format-date';
+import { DEFAULT_CLOSING_PARAGRAPH, DEFAULT_COMPANY_NAME } from '@shared/company-defaults';
+import type { TermTokenContext } from '@shared/term-tokens';
 import type { QuotationFormValues } from '@/schemas/quotation-schema';
 
 /**
@@ -38,14 +43,45 @@ export default function NewQuotationPage() {
   } = form;
 
   const lineItems = useLineItems();
+  const terms = useQuotationTerms();
+
+  const vatEnabled = watch('vatEnabled');
+  const vatRatePercent = watch('vatRatePercent');
 
   const totals = useQuotationTotals({
     items: lineItems.items,
-    vatEnabled: watch('vatEnabled'),
-    vatRatePercent: watch('vatRatePercent'),
+    vatEnabled,
+    vatRatePercent,
     discountEnabled: watch('discountEnabled'),
     discountRatePercent: watch('discountRatePercent'),
   });
+
+  const quotationDate = watch('quotationDate');
+  const clientName = watch('client.clientName');
+  const clientCompanyName = watch('client.companyName');
+
+  /**
+   * What the whitelisted term tokens resolve to (§10.2).
+   *
+   * A field the user has not filled in yet stays EMPTY rather than being
+   * guessed. The resolver leaves an empty-valued token visible and reports it,
+   * so an unresolved placeholder is something the user can see and fix instead
+   * of a blank in a document nobody caught.
+   */
+  const tokenContext = useMemo<TermTokenContext>(
+    () => ({
+      companyName: DEFAULT_COMPANY_NAME,
+      // Not in any reference document; comes from Company Settings when built.
+      companyVatNumber: '',
+      clientCompanyName,
+      clientName,
+      quotationNumber: quotationNumber ?? '',
+      quotationDate: formatDisplayDate(quotationDate),
+      validityDays: '',
+      vatRate: vatEnabled ? `${String(vatRatePercent)}%` : '',
+    }),
+    [clientCompanyName, clientName, quotationNumber, quotationDate, vatEnabled, vatRatePercent],
+  );
 
   const [busy, setBusy] = useState<'draft' | 'finalize' | null>(null);
 
@@ -57,7 +93,11 @@ export default function NewQuotationPage() {
 
     setBusy(finalize ? 'finalize' : 'draft');
     try {
-      const result = await saveQuotation(toPayload(values, lineItems.items), finalize, token);
+      const result = await saveQuotation(
+        toPayload(values, lineItems.items, terms.terms, tokenContext),
+        finalize,
+        token,
+      );
 
       if (result.quotationNumber.length > 0) {
         setQuotationNumber(result.quotationNumber);
@@ -140,9 +180,16 @@ export default function NewQuotationPage() {
           pricingMode={watch('pricingMode')}
         />
 
-        <Card title="Terms &amp; Conditions">
-          <PhasePlaceholder phase="05 (Terms &amp; Conditions)" feature="Terms selection" />
-        </Card>
+        <QuotationTermsSection
+          terms={terms}
+          tokenContext={tokenContext}
+          closingParagraph={watch('closingParagraph')}
+          closingParagraphDefault={DEFAULT_CLOSING_PARAGRAPH}
+          closingParagraphError={errors.closingParagraph?.message}
+          onClosingParagraphChange={(value) => {
+            form.setValue('closingParagraph', value, { shouldValidate: false });
+          }}
+        />
 
         <Card title="Authorized Person">
           <PhasePlaceholder phase="06 (Authorized Persons)" feature="Signatory selection" />

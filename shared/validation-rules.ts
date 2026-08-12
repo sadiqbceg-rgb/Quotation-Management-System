@@ -123,6 +123,31 @@ export function escapeForSheet(value: string): string {
   return needsFormulaEscaping(value) ? `'${value}` : value;
 }
 
+/**
+ * Undo `escapeForSheet` on the way back out.
+ *
+ * The escape is a storage detail. A term reading "+15% will be added to the
+ * quoted rates" must print exactly that on the client's quotation, not
+ * "'+15% will be added…", so the apostrophe has to come off somewhere — and the
+ * read boundary is the only place that sees every value.
+ *
+ * The condition is deliberately narrow: an apostrophe is stripped ONLY when the
+ * character after it is one this module would have escaped. That makes it the
+ * exact inverse of the write for every value the system produces, and it is
+ * correct whether or not the host consumed the apostrophe itself (Google Sheets
+ * treats a leading apostrophe as a plain-text marker, so it may already be
+ * gone by the time the value is read).
+ *
+ * The one input it cannot round-trip is text that genuinely begins with an
+ * apostrophe immediately followed by `=`, `+`, `-` or `@` — `'=x`. That loses
+ * its apostrophe. Escaping it further would corrupt the far more common case
+ * under one of the two host behaviours, so this is the better trade.
+ */
+export function unescapeFromSheet(value: string): string {
+  if (value.length < 2 || value.charAt(0) !== "'") return value;
+  return needsFormulaEscaping(value.slice(1)) ? value.slice(1) : value;
+}
+
 /** Strip control characters that have no business in a document field. */
 export function stripControlCharacters(value: string): string {
   // eslint-disable-next-line no-control-regex

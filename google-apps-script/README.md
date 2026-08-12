@@ -183,6 +183,47 @@ repeat this procedure.
 
 ---
 
+## Importing the company's Terms & Conditions
+
+The `Terms` sheet is created empty. It is never seeded automatically — PRD §21
+is emphatic that existing terms must not be modified behind the user's back, and
+silently populating a library on first load is the same class of surprise.
+
+An Admin loads the company's real terms once, from the application:
+
+1. Sign in as an Admin and open **Terms & Conditions**.
+2. Press **Import company terms**.
+
+That runs `admin.importReferenceTerms`, which inserts the 11 terms transcribed
+verbatim from `reference/existing-terms.docx`
+(`src/terms/import-reference-terms.ts`). It is:
+
+- **Admin only** — enforced by the action table in `main.ts`, not by the button.
+- **Idempotent** — a second run imports nothing.
+- **Non-destructive** — it inserts only titles that are absent and never edits
+  an existing row, so a term someone has since reworded stays reworded.
+
+Two placeholders in the source document were converted to the canonical token
+syntax and nothing else was changed:
+
+| In the document | Stored as          | Resolves?             |
+| --------------- | ------------------ | --------------------- |
+| `{company}`     | `{{company.name}}` | yes                   |
+| `{SAR  }`       | `{{rate}}`         | **no — deliberately** |
+
+`{{rate}}` is outside the token whitelist on purpose. A quotation has no single
+rate; the approved sample replaced that placeholder by hand with two different
+per-category rates. Leaving it unresolvable means the UI flags it and a person
+has to supply the real figure, rather than a document going to a client with a
+blank where a price belongs.
+
+Four PRD §20 checkbox labels have no counterpart in the reference document —
+Mobilization, Manpower Replacement, Project Specific Terms, and Transportation
+as a standalone term. Their wording is **not** invented here. The company adds
+them through the ordinary "Add term" flow.
+
+---
+
 ## Password hashing — measure before go-live
 
 `hashPassword` uses PBKDF2-HMAC-SHA256 with a per-user salt, a per-record
@@ -219,8 +260,9 @@ the random salt.
 | ----------- | ------------------------------------------------------------------------------------- |
 | 01 _(done)_ | Router, envelope, role table, Script Property accessors, `health`                     |
 | 02 _(done)_ | Sessions, password hashing, `resolveCaller`, rate limiting, audit log                 |
-| 03          | Quotation numbering (`LockService` + `Counters` + idempotency), quotation persistence |
-| 05          | Terms library                                                                         |
+| 03 _(done)_ | Quotation numbering (`LockService` + `Counters` + idempotency), quotation persistence |
+| 04 _(done)_ | `Items` sheet and the item catalogue actions                                          |
+| 05 _(done)_ | `Terms` sheet, the T&C actions, and `admin.importReferenceTerms`                      |
 | 06          | Authorized persons and signature storage                                              |
 | 10          | Drive folders and uploads                                                             |
 | 11          | Sheets tracking                                                                       |

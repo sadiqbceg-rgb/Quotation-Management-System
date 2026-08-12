@@ -7,7 +7,7 @@
  */
 
 import { callAction } from '@/services/api/client';
-import type { QuotationStatus } from '@shared/types';
+import type { QuotationStatus, TermSource } from '@shared/types';
 
 export interface QuotationLinePayload {
   category: string;
@@ -20,6 +20,18 @@ export interface QuotationLinePayload {
   remarks: string;
 }
 
+export interface QuotationTermPayload {
+  /** A library id, or `local:<uuid>` for a term created on this quotation. */
+  id: string;
+  title: string;
+  /** The resolved snapshot text — what the document prints. */
+  body: string;
+  /** The unresolved template, kept so the quotation can be reopened and edited. */
+  bodyTemplate: string;
+  sortOrder: number;
+  source: TermSource;
+}
+
 export interface QuotationPayload {
   draftId: string;
   quotationDate: string;
@@ -28,6 +40,8 @@ export interface QuotationPayload {
   status: QuotationStatus;
   client: Record<string, string | undefined>;
   lines: QuotationLinePayload[];
+  terms?: QuotationTermPayload[];
+  closingParagraph?: string;
   discountRateBasisPoints?: number;
   vatRateBasisPoints?: number;
   /** Echoed on an update. The server ignores it and re-reads storage. */

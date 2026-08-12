@@ -10,7 +10,7 @@
  * budget on a sheet of any size.
  */
 
-import { escapeForSheet } from '@shared/validation-rules';
+import { escapeForSheet, unescapeFromSheet } from '@shared/validation-rules';
 import { requireProperty } from '../config/properties';
 
 export type CellValue = string | number | boolean;
@@ -100,10 +100,17 @@ export function findRow(
   return null;
 }
 
-/** Coerce a sheet cell to a trimmed string. Sheets returns Date and number too. */
+/**
+ * Coerce a sheet cell to a trimmed string. Sheets returns Date and number too.
+ *
+ * Strings are un-escaped here, the mirror of the escaping `appendRow` and
+ * `setCell` apply. Reading is the one boundary every stored value crosses, so
+ * doing it anywhere else would mean some caller eventually printing the
+ * apostrophe onto a client's quotation.
+ */
 export function asText(value: unknown): string {
   if (value === null || value === undefined) return '';
-  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'string') return unescapeFromSheet(value.trim());
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (value instanceof Date) return value.toISOString();
   // Anything else is not a value this system writes; treat it as empty rather

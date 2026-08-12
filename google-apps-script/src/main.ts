@@ -30,10 +30,11 @@ import { nowSeconds, shouldRenew, issueToken, verifyToken } from './auth/token';
 import { isFullyConfigured, missingProperties, requireProperty } from './config/properties';
 import * as items from './items/handlers';
 import * as quotation from './quotation/handlers';
+import * as terms from './terms/handlers';
 import { ApiError, type Caller, type ErrorCode, type HandlerContext } from './errors';
 import * as users from './sheets/users-repository';
 
-export const API_VERSION = '0.4.0';
+export const API_VERSION = '0.5.0';
 
 /* -------------------------------------------------------------------------- */
 /* Envelope                                                                   */
@@ -138,6 +139,32 @@ export const ACTIONS: Record<string, ActionDefinition> = {
   'items.deactivate': {
     access: 'authenticated',
     handler: items.deactivate,
+  },
+
+  'terms.list': {
+    access: 'authenticated',
+    handler: terms.list,
+  },
+  'terms.create': {
+    access: 'authenticated',
+    handler: terms.create,
+  },
+  'terms.update': {
+    access: 'authenticated',
+    handler: terms.update,
+  },
+  'terms.deactivate': {
+    access: 'authenticated',
+    handler: terms.deactivate,
+  },
+  'terms.reorder': {
+    access: 'authenticated',
+    handler: terms.reorder,
+  },
+  // Admin only: it writes the company's real reference terms into the library.
+  'admin.importReferenceTerms': {
+    access: 'Admin',
+    handler: terms.importReference,
   },
 };
 
