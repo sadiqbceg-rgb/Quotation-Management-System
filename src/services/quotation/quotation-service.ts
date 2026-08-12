@@ -15,6 +15,9 @@ export interface QuotationLinePayload {
   quantity: number;
   /** Integer halalas. */
   unitPrice: number;
+  description: string;
+  unit: string;
+  remarks: string;
 }
 
 export interface QuotationPayload {

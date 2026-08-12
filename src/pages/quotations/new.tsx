@@ -10,6 +10,9 @@ import { ClientInfoSection } from '@/components/client/ClientInfoSection';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { useQuotationForm } from '@/hooks/useQuotationForm';
+import { useLineItems } from '@/hooks/useLineItems';
+import { useQuotationTotals } from '@/hooks/useQuotationTotals';
+import { QuotationItemsSection } from '@/components/items/QuotationItemsSection';
 import { saveQuotation } from '@/services/quotation/quotation-service';
 import { AppError, messageOf } from '@/services/api/errors';
 import type { QuotationFormValues } from '@/schemas/quotation-schema';
@@ -34,6 +37,16 @@ export default function NewQuotationPage() {
     formState: { errors },
   } = form;
 
+  const lineItems = useLineItems();
+
+  const totals = useQuotationTotals({
+    items: lineItems.items,
+    vatEnabled: watch('vatEnabled'),
+    vatRatePercent: watch('vatRatePercent'),
+    discountEnabled: watch('discountEnabled'),
+    discountRatePercent: watch('discountRatePercent'),
+  });
+
   const [busy, setBusy] = useState<'draft' | 'finalize' | null>(null);
 
   const token = state.status === 'authenticated' ? state.token : null;
@@ -44,7 +57,7 @@ export default function NewQuotationPage() {
 
     setBusy(finalize ? 'finalize' : 'draft');
     try {
-      const result = await saveQuotation(toPayload(values), finalize, token);
+      const result = await saveQuotation(toPayload(values, lineItems.items), finalize, token);
 
       if (result.quotationNumber.length > 0) {
         setQuotationNumber(result.quotationNumber);
@@ -121,12 +134,11 @@ export default function NewQuotationPage() {
 
         <ClientInfoSection register={register} errors={errors} />
 
-        <Card title="Quotation Items">
-          <PhasePlaceholder
-            phase="04 (Item Categories)"
-            feature="Manpower, equipment and materials"
-          />
-        </Card>
+        <QuotationItemsSection
+          lineItems={lineItems}
+          totals={totals}
+          pricingMode={watch('pricingMode')}
+        />
 
         <Card title="Terms &amp; Conditions">
           <PhasePlaceholder phase="05 (Terms &amp; Conditions)" feature="Terms selection" />

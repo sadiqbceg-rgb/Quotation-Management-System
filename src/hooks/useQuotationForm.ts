@@ -7,6 +7,7 @@ import { newDraftId } from '@/utils/uuid';
 import { todayIso } from '@/utils/format-date';
 import { DEFAULT_VAT_RATE_BASIS_POINTS } from '@shared/totals';
 import type { QuotationPayload } from '@/services/quotation/quotation-service';
+import type { EditorLineItem } from './useLineItems';
 
 export const DEFAULT_VAT_RATE_PERCENT = DEFAULT_VAT_RATE_BASIS_POINTS / 100;
 
@@ -65,9 +66,14 @@ export function useQuotationForm(options: UseQuotationFormOptions = {}) {
     mode: 'onBlur',
   });
 
-  /** Build the wire payload. Money and quantities are already integers. */
+  /**
+   * Build the wire payload.
+   *
+   * Money and quantities are already integer minor units — the conversion
+   * happened at the input boundary — so nothing is re-parsed here.
+   */
   const toPayload = useCallback(
-    (values: QuotationFormValues): QuotationPayload => {
+    (values: QuotationFormValues, lines: readonly EditorLineItem[] = []): QuotationPayload => {
       const payload: QuotationPayload = {
         draftId: draftIdRef.current,
         quotationDate: values.quotationDate,
@@ -85,8 +91,14 @@ export function useQuotationForm(options: UseQuotationFormOptions = {}) {
           projectLocation: values.client.projectLocation ?? '',
           clientReference: values.client.clientReference ?? '',
         },
-        // Line items arrive in Phase 04; the shape is already wired through.
-        lines: [],
+        lines: lines.map((line) => ({
+          category: line.category,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          description: line.description,
+          unit: line.unit,
+          remarks: line.remarks,
+        })),
         vatRateBasisPoints: values.vatEnabled ? Math.round(values.vatRatePercent * 100) : 0,
       };
 

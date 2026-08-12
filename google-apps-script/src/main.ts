@@ -28,11 +28,12 @@ import * as auth from './auth/handlers';
 import { isTokenRevoked } from './auth/session';
 import { nowSeconds, shouldRenew, issueToken, verifyToken } from './auth/token';
 import { isFullyConfigured, missingProperties, requireProperty } from './config/properties';
+import * as items from './items/handlers';
 import * as quotation from './quotation/handlers';
 import { ApiError, type Caller, type ErrorCode, type HandlerContext } from './errors';
 import * as users from './sheets/users-repository';
 
-export const API_VERSION = '0.3.0';
+export const API_VERSION = '0.4.0';
 
 /* -------------------------------------------------------------------------- */
 /* Envelope                                                                   */
@@ -120,6 +121,23 @@ export const ACTIONS: Record<string, ActionDefinition> = {
   'quotation.updateStatus': {
     access: 'authenticated',
     handler: quotation.updateStatus,
+  },
+
+  'items.list': {
+    access: 'authenticated',
+    handler: items.list,
+  },
+  'items.create': {
+    access: 'authenticated',
+    handler: items.create,
+  },
+  'items.update': {
+    access: 'authenticated',
+    handler: items.update,
+  },
+  'items.deactivate': {
+    access: 'authenticated',
+    handler: items.deactivate,
   },
 };
 
