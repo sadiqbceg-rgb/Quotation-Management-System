@@ -107,7 +107,17 @@ export function userMessageForCode(code: ErrorCode): string {
   return USER_MESSAGES[code];
 }
 
-/** The message to show for any thrown value, with the requestId appended when known. */
+/**
+ * The user-facing message for any thrown value, WITHOUT the reference id.
+ *
+ * Use this wherever the surrounding UI already shows the requestId — the toast
+ * has a dedicated line for it — so the reference is not printed twice.
+ */
+export function messageOf(error: unknown): string {
+  return error instanceof AppError ? userMessageForCode(error.code) : USER_MESSAGES.INTERNAL_ERROR;
+}
+
+/** The message with the requestId appended, for plain text contexts. */
 export function describeError(error: unknown): string {
   if (error instanceof AppError) {
     const base = userMessageForCode(error.code);

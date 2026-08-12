@@ -237,6 +237,72 @@ export function createSpreadsheetFake(): SpreadsheetFake {
 }
 
 /* -------------------------------------------------------------------------- */
+/* LockService                                                                */
+/* -------------------------------------------------------------------------- */
+
+export interface LockFake {
+  service: { getScriptLock: () => unknown; getUserLock: () => unknown };
+  /** True while the lock is held. */
+  isHeld: () => boolean;
+  /** Number of successful acquisitions, for assertions. */
+  acquisitions: () => number;
+  /** Make the next tryLock fail, simulating contention. */
+  failNextAcquisition: () => void;
+  /** Every flush() call recorded, to prove durability before release. */
+  flushes: () => number;
+  recordFlush: () => void;
+}
+
+/**
+ * A faithful lock fake.
+ *
+ * JavaScript is single-threaded, so a test cannot literally run two requests at
+ * once. What it CAN prove is that the counter is never written while the lock
+ * is not held — which is the actual invariant. `assertLockHeld` is called from
+ * the counter fake, so a critical section that forgets to lock fails the test.
+ */
+export function createLockFake(): LockFake {
+  let held = false;
+  let acquired = 0;
+  let flushCount = 0;
+  let failNext = false;
+
+  const lock = {
+    tryLock: (_timeoutMs: number): boolean => {
+      if (failNext) {
+        failNext = false;
+        return false;
+      }
+      if (held) return false;
+      held = true;
+      acquired += 1;
+      return true;
+    },
+    waitLock: (_timeoutMs: number): void => {
+      held = true;
+      acquired += 1;
+    },
+    releaseLock: (): void => {
+      held = false;
+    },
+    hasLock: (): boolean => held,
+  };
+
+  return {
+    service: { getScriptLock: () => lock, getUserLock: () => lock },
+    isHeld: () => held,
+    acquisitions: () => acquired,
+    failNextAcquisition: () => {
+      failNext = true;
+    },
+    flushes: () => flushCount,
+    recordFlush: () => {
+      flushCount += 1;
+    },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* ContentService                                                             */
 /* -------------------------------------------------------------------------- */
 
@@ -272,6 +338,7 @@ export interface GasEnvironment {
   properties: PropertiesFake;
   cache: CacheFake;
   spreadsheet: SpreadsheetFake;
+  lock: LockFake;
 }
 
 /**
@@ -293,13 +360,28 @@ export function installGasFakes(
   });
   const cacheFake = createCacheFake();
   const spreadsheetFake = createSpreadsheetFake();
+  const lockFake = createLockFake();
 
   stub('Utilities', createUtilitiesFakeWithBlobDecode());
   stub('PropertiesService', propertiesFake.service);
   stub('CacheService', cacheFake.service);
-  stub('SpreadsheetApp', spreadsheetFake.service);
   stub('ContentService', createContentServiceFake());
+  stub('LockService', lockFake.service);
+  // SpreadsheetApp.flush() has no effect on the fake store, but recording the
+  // call lets a test assert the counter write was flushed before the lock was
+  // released — the guarantee that stops a stale read handing out a used number.
+  stub('SpreadsheetApp', {
+    ...spreadsheetFake.service,
+    flush: () => {
+      lockFake.recordFlush();
+    },
+  });
   stub('console', { ...console, error: () => undefined, log: () => undefined });
 
-  return { properties: propertiesFake, cache: cacheFake, spreadsheet: spreadsheetFake };
+  return {
+    properties: propertiesFake,
+    cache: cacheFake,
+    spreadsheet: spreadsheetFake,
+    lock: lockFake,
+  };
 }

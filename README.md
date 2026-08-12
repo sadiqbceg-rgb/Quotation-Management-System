@@ -102,8 +102,8 @@ build and tests green.
 | ------------------------ | ----------------- |
 | 00 Project Analysis      | planning complete |
 | 01 Project Foundation    | complete          |
-| **02 Authentication**    | **complete**      |
-| 03 Quotation Core        | not started       |
+| 02 Authentication        | complete          |
+| **03 Quotation Core**    | **complete**      |
 | 04 Item Categories       | not started       |
 | 05 Terms & Conditions    | not started       |
 | 06 Authorized Persons    | not started       |
