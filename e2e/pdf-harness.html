@@ -1,0 +1,22 @@
+<!doctype html>
+<!--
+  TEST ONLY — a browser harness for PDF generation.
+
+  The Node tests already generate real PDFs and re-parse them, but they run
+  under jsdom with the file system. This page exercises the parts only a real
+  browser has: fetching the letterhead, the fonts and the seal over HTTP, and
+  running fontkit and pdf-lib against those responses.
+
+  It is not part of the application. Vite serves it only when Playwright asks
+  for it, and it is not an entry point of the production build.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PDF harness</title>
+  </head>
+  <body>
+    <pre id="result">running…</pre>
+    <script type="module" src="./pdf-harness.ts"></script>
+  </body>
+</html>

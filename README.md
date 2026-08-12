@@ -51,6 +51,8 @@ The backend is a separate deployment — see `google-apps-script/README.md`.
 | `npm test`          | Vitest                                                      |
 | `npm run gas:build` | Bundle the Apps Script backend to `dist-gas/Code.js`        |
 | `npm run gas:push`  | Build, then `clasp push`                                    |
+| `npm run fonts`     | Rebuild the bundled Carlito TTFs from the licensed source   |
+| `npm run test:e2e`  | Playwright browser tests (PDF generation in a real browser) |
 
 ---
 
@@ -99,23 +101,23 @@ Work proceeds one phase at a time; each is a standalone prompt in
 `quotation-implementation-plan/prompts/`, and each ends with typecheck, lint,
 build and tests green.
 
-| Phase                     | Status            |
-| ------------------------- | ----------------- |
-| 00 Project Analysis       | planning complete |
-| 01 Project Foundation     | complete          |
-| 02 Authentication         | complete          |
-| 03 Quotation Core         | complete          |
-| 04 Item Categories        | complete          |
-| 05 Terms & Conditions     | complete          |
-| 06 Authorized Persons     | complete          |
-| **07 Quotation Document** | **complete**      |
-| 08 PDF Generation         | not started       |
-| 09 DOCX Generation        | not started       |
-| 10 Google Drive           | not started       |
-| 11 Google Sheets          | not started       |
-| 12 Security               | not started       |
-| 13 Testing                | not started       |
-| 14 Production Deployment  | not started       |
+| Phase                    | Status            |
+| ------------------------ | ----------------- |
+| 00 Project Analysis      | planning complete |
+| 01 Project Foundation    | complete          |
+| 02 Authentication        | complete          |
+| 03 Quotation Core        | complete          |
+| 04 Item Categories       | complete          |
+| 05 Terms & Conditions    | complete          |
+| 06 Authorized Persons    | complete          |
+| 07 Quotation Document    | complete          |
+| **08 PDF Generation**    | **complete**      |
+| 09 DOCX Generation       | not started       |
+| 10 Google Drive          | not started       |
+| 11 Google Sheets         | not started       |
+| 12 Security              | not started       |
+| 13 Testing               | not started       |
+| 14 Production Deployment | not started       |
 
 ---
 
@@ -147,6 +149,41 @@ One measurement worth knowing before Phase 08: the letterhead's MediaBox is
 `0 7.83 595.5 850.08`, while the quotation is `0 0 595.32 841.92`. Anything
 embedding the letterhead has to normalise that 7.83 pt y offset. It is recorded
 in the manifest and in `LETTERHEAD_SOURCE`.
+
+---
+
+## PDF generation
+
+`Save as PDF` produces the document client-side with `pdf-lib`, drawing real
+text onto pages backed by the company's own `reference/letterhead.pdf`, embedded
+once as a vector page.
+
+Three consequences of that choice are worth knowing:
+
+- **The letterhead is exact.** Header, red rule, logo, Vision 2030 emblem,
+  watermark, footer rule and all three footer columns come from the company's
+  artwork rather than an approximation of it.
+- **No Arabic is ever re-typeset.** `pdf-lib` does no bidirectional reordering
+  and no Arabic shaping. The document's only Arabic lives in the letterhead and
+  is already vectors. This removes the single largest fidelity risk in the
+  project.
+- **The output is real text** — selectable and searchable, not a screenshot. A
+  test extracts the client name back out of the finished bytes to prove it.
+
+Fonts are **Carlito** (SIL OFL), bundled in `src/assets/fonts/` with the licence.
+Calibri, which the approved document uses, is not redistributable; Carlito is
+metric-compatible with it, so line breaks and column fits match. `npm run fonts`
+rebuilds the TTFs from `@fontsource/carlito`, so the committed binaries have a
+recorded origin.
+
+`pdf-lib`, the fonts and the letterhead are all dynamically imported: pressing
+the button is what downloads them. The main bundle grew 601 → 604 kB when this
+phase landed.
+
+One measurement that is easy to get wrong: the letterhead's MediaBox is
+`0 7.83 595.5 850.08`, not `0 0 595.28 841.89`. Drawing it at the origin scaled
+to A4 puts the red header rule 8 pt too high. It is drawn at natural size with
+its top edge on the page's top edge — see `pdf-layout-engine.ts`.
 
 ---
 

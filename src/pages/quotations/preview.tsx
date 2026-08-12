@@ -9,6 +9,7 @@ import { Spinner } from '@/components/common/Spinner';
 import { QuotationPreview } from '@/components/quotation/preview/QuotationPreview';
 import { PreviewToolbar } from '@/components/quotation/preview/PreviewToolbar';
 import { useAuth } from '@/hooks/useAuth';
+import { useGeneratePdf } from '@/hooks/useGeneratePdf';
 import { AppError, messageOf } from '@/services/api/errors';
 import { getQuotationByDraftId } from '@/services/quotation/quotation-service';
 import { fetchSignature } from '@/services/signatories/signatory-service';
@@ -22,7 +23,7 @@ import { buildDocumentModel } from '@/services/document/build-document-model';
 import { paginate } from '@/services/document/pagination-rules';
 import { canExport, validateForExport } from '@/services/document/export-validation';
 import { DEFAULT_COMPANY_NAME } from '@shared/company-defaults';
-import { toDataUri } from '@shared/signature';
+import { base64PngToBytes, toDataUri } from '@shared/signature';
 import { emptyTokenContext } from '@shared/term-tokens';
 import { calculateTotals } from '@shared/totals';
 import { halalas, milli } from '@shared/money';
@@ -106,6 +107,7 @@ export default function QuotationPreviewPage() {
   const { state } = useAuth();
   const navigate = useNavigate();
   const scale = useFitScale();
+  const pdf = useGeneratePdf();
 
   const token = state.status === 'authenticated' ? state.token : null;
 
@@ -256,8 +258,25 @@ export default function QuotationPreviewPage() {
               onPrint={() => {
                 window.print();
               }}
+              isSavingPdf={pdf.state.status === 'generating'}
+              onSavePdf={() => {
+                void pdf.save(
+                  built.model,
+                  signature.data === undefined ? null : base64PngToBytes(signature.data),
+                );
+              }}
             />
           </div>
+
+          {pdf.state.status === 'error' ? (
+            <div className="print-hide">
+              <Card>
+                <p role="alert" className="text-brand-red text-sm">
+                  {pdf.state.message}
+                </p>
+              </Card>
+            </div>
+          ) : null}
 
           {built.blockers.length > 0 ? (
             <div className="print-hide">

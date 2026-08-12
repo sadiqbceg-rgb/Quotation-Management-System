@@ -40,6 +40,22 @@ export function toDataUri(value: Base64Png): string {
   return `data:image/png;base64,${value}`;
 }
 
+/**
+ * Decode to raw bytes, for embedding in a PDF.
+ *
+ * `atob` is available in browsers and in Node 16+, so one implementation covers
+ * the application and the tests.
+ */
+export function base64PngToBytes(value: Base64Png): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
 /** Decoded byte length of a base64 payload, without decoding it. */
 export function base64ByteLength(value: string): number {
   if (value.length === 0) return 0;

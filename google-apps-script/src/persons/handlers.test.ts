@@ -261,9 +261,12 @@ describe('signature upload (PRD §33 item 14)', () => {
 
   it('rejects a file over 1 MB', () => {
     const created = createPerson();
-    // A real PNG, just far too large once its header is honest about the size.
-    const oversized = TEST_ONLY_buildPng({ width: 2000, height: 2000 });
-    const padded = [...oversized, ...new Array<number>(1_100_000).fill(0)];
+
+    // A valid PNG followed by filler. The size is checked from the base64
+    // length BEFORE anything is decoded, so an oversized payload is never
+    // expanded into memory — and the test does not have to build 4M pixels
+    // to prove it.
+    const padded = [...TEST_ONLY_buildPng({ width: 640, height: 120 }), ...new Array<number>(1_200_000).fill(0)];
 
     expect(uploadSignature(created.id, padded).error?.code).toBe('VALIDATION_FAILED');
     expect(env.drive.files()).toEqual([]);

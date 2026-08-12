@@ -6,17 +6,24 @@ export interface PreviewToolbarProps {
   canExport: boolean;
   onBack: () => void;
   onPrint: () => void;
+  /** Enabled in Phase 08. */
+  onSavePdf: () => void;
+  isSavingPdf: boolean;
 }
 
 /**
  * Preview actions (PRD §29).
  *
- * `Back to Edit` and `Print` work now. The three export buttons are rendered
- * DISABLED with a tooltip naming the phase that implements them.
+ * `Back to Edit`, `Print` and `Save as PDF` work. `Save as Word` and
+ * `Save to Google Drive` are rendered DISABLED with a tooltip naming the phase
+ * that implements them.
  *
  * Showing them disabled rather than hiding them is deliberate: the PRD promises
  * these actions, and a user who cannot see them assumes the feature is missing
  * rather than pending. The tooltip says which is which.
+ *
+ * `Save as PDF` is disabled for a different reason — an incomplete quotation —
+ * and says so, because that one the user can act on.
  *
  * When a quotation is not ready to export, the reason is the blocker list above
  * this toolbar, not a tooltip — that list is actionable, a tooltip is not.
@@ -27,6 +34,8 @@ export function PreviewToolbar({
   canExport,
   onBack,
   onPrint,
+  onSavePdf,
+  isSavingPdf,
 }: PreviewToolbarProps) {
   const pendingTitle = (phase: string): string =>
     canExport
@@ -50,7 +59,14 @@ export function PreviewToolbar({
           Print
         </Button>
 
-        <Button disabled title={pendingTitle('08')}>
+        <Button
+          disabled={!canExport}
+          isLoading={isSavingPdf}
+          onClick={onSavePdf}
+          {...(canExport
+            ? {}
+            : { title: 'Resolve the items listed above before the quotation can be exported.' })}
+        >
           Save as PDF
         </Button>
         <Button disabled title={pendingTitle('09')}>

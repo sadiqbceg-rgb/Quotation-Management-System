@@ -114,7 +114,7 @@ export default tseslint.config(
 
   /* ------------------------------------------------------------------- tests */
   {
-    files: ['**/*.test.{ts,tsx}', 'vitest.setup.ts'],
+    files: ['**/*.test.{ts,tsx}', '**/__fixtures__/**/*.{ts,tsx}', 'vitest.setup.ts'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
     rules: {
       'no-restricted-imports': 'off',

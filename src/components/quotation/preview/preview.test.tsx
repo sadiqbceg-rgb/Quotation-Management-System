@@ -246,6 +246,8 @@ describe('the toolbar (PRD §29)', () => {
         canExport={canExport}
         onBack={() => undefined}
         onPrint={() => undefined}
+        onSavePdf={() => undefined}
+        isSavingPdf={false}
       />,
     );
   }
@@ -257,10 +259,15 @@ describe('the toolbar (PRD §29)', () => {
     expect(screen.getByRole('button', { name: /^print$/i })).toBeEnabled();
   });
 
-  it('shows the export buttons disabled, with the phase named', () => {
+  it('enables Save as PDF once the quotation is exportable', () => {
+    renderToolbar();
+    expect(screen.getByRole('button', { name: /save as pdf/i })).toBeEnabled();
+  });
+
+  it('shows the not-yet-built exports disabled, with the phase named', () => {
     renderToolbar();
 
-    for (const name of [/save as pdf/i, /save as word/i, /save to google drive/i]) {
+    for (const name of [/save as word/i, /save to google drive/i]) {
       const button = screen.getByRole('button', { name });
       expect(button).toBeDisabled();
       expect(button).toHaveAttribute('title', expect.stringMatching(/phase/i));
@@ -270,7 +277,9 @@ describe('the toolbar (PRD §29)', () => {
   it('explains the real blocker when the quotation is not exportable', () => {
     renderToolbar(false);
 
-    expect(screen.getByRole('button', { name: /save as pdf/i })).toHaveAttribute(
+    const button = screen.getByRole('button', { name: /save as pdf/i });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute(
       'title',
       expect.stringMatching(/resolve the items listed above/i),
     );

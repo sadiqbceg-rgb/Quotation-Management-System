@@ -26,6 +26,10 @@ google-apps-script/.clasp.json
 .vscode/*
 !.vscode/extensions.json
 
+# playwright
+test-results/
+playwright-report/
+
 # logs
 npm-debug.log*
 *.log

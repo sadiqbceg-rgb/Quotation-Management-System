@@ -112,10 +112,17 @@ describe.skipIf(!hasRun)('the seal, whose source has no alpha channel', () => {
   it('is downscaled to stay well above print resolution without bloating the bundle', () => {
     const seal = manifest().seal;
 
-    // The seal prints at 119 pt; 800 px is >300 dpi at that size.
-    expect(Math.max(seal.width, seal.height)).toBeLessThanOrEqual(800);
-    expect(Math.max(seal.width, seal.height)).toBeGreaterThanOrEqual(600);
-    expect(statSync(join(GENERATED, 'seal-transparent.png')).size).toBeLessThan(1_000_000);
+    /*
+     * The seal prints at 119 pt = 1.65 in, so 300 dpi needs ~496 px. Below that
+     * it is visibly soft in print; far above it, pdf-lib's raw-RGBA embedding
+     * makes it the bulk of the file for detail no printer resolves.
+     */
+    const printedInches = 119 / 72;
+    const dpi = seal.width / printedInches;
+
+    expect(dpi).toBeGreaterThanOrEqual(300);
+    expect(dpi).toBeLessThan(400);
+    expect(statSync(join(GENERATED, 'seal-transparent.png')).size).toBeLessThan(450_000);
   });
 });
 

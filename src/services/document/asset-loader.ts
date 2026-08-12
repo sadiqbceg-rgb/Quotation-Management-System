@@ -46,8 +46,8 @@ export interface DocumentAssetUrls {
  * and pure, and it stays that way.
  */
 export const ASSET_INTRINSIC_SIZE = {
-  /** 1312 × 1199 keyed, then downscaled to 800 on the long edge. */
-  seal: { width: 800, height: 731 },
+  /** 1312 × 1199 keyed, then downscaled to 520 on the long edge (315 dpi at print size). */
+  seal: { width: 520, height: 475 },
   /** reference/company-logo.png, which is a JPEG. */
   logo: { width: 1100, height: 606 },
 } as const;

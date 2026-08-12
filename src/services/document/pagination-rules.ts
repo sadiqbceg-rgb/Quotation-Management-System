@@ -122,6 +122,39 @@ export interface DocumentPage {
   blocks: PlacedBlock[];
 }
 
+/**
+ * How the paginator measures.
+ *
+ * Injectable because the preview and the PDF measure differently and MUST NOT
+ * decide differently. The POLICY — what may split, what is atomic, when a
+ * header repeats — lives in `paginate()` and has exactly one implementation.
+ * Only the ruler changes: the preview has no font, so it estimates; the PDF has
+ * the embedded font's real advance widths and uses them, because it is drawing
+ * the actual glyphs and must not overflow the page.
+ *
+ * The estimator rounds line counts up, so it errs towards breaking early rather
+ * than overflowing. The two agree except on borderline documents.
+ */
+export interface PaginationMeasurer {
+  block: (block: DocumentBlock) => number;
+  termItem: (item: TermItem) => number;
+  /**
+   * Height of ONE row of this table — header and body rows alike.
+   *
+   * Uniform per table so the row-splitting arithmetic stays simple. A measurer
+   * with real metrics returns the tallest row, which is conservative: a page
+   * fits at most as many rows as it would have, never more.
+   */
+  tableRow: (block: Extract<DocumentBlock, { kind: 'table' }>) => number;
+}
+
+/** The default ruler: measured estimates, no font required. */
+export const ESTIMATED_MEASURER: PaginationMeasurer = {
+  block: measureBlock,
+  termItem: termItemHeight,
+  tableRow: () => BLOCK_METRICS.tableRowHeightPt,
+};
+
 export class PaginationError extends Error {
   public override readonly name = 'PaginationError';
   public readonly blockKind: string;
@@ -138,8 +171,7 @@ const USABLE_HEIGHT = BODY_BOX.heightPt;
  * How many table body rows fit in the space left, given the header must come
  * with them. Returns 0 when not even the header plus one row fits.
  */
-function rowsThatFit(available: number): number {
-  const rowHeight = BLOCK_METRICS.tableRowHeightPt;
+function rowsThatFit(available: number, rowHeight: number): number {
   const withHeader = available - rowHeight;
 
   if (withHeader < rowHeight) return 0;
@@ -155,7 +187,10 @@ function rowsThatFit(available: number): number {
  * - the terms list may split BETWEEN items, never within one;
  * - the signature block is atomic and moves whole.
  */
-export function paginate(model: DocumentModel): DocumentPage[] {
+export function paginate(
+  model: DocumentModel,
+  measurer: PaginationMeasurer = ESTIMATED_MEASURER,
+): DocumentPage[] {
   const pages: DocumentPage[] = [];
 
   let current: PlacedBlock[] = [];
@@ -188,7 +223,7 @@ export function paginate(model: DocumentModel): DocumentPage[] {
   const remaining = (): number => USABLE_HEIGHT - used;
 
   for (const block of model.blocks) {
-    const height = measureBlock(block);
+    const height = measurer.block(block);
 
     /* Atomic blocks ------------------------------------------------------- */
 
@@ -217,13 +252,14 @@ export function paginate(model: DocumentModel): DocumentPage[] {
 
     if (block.kind === 'table') {
       let offset = 0;
+      const rowHeight = measurer.tableRow(block);
 
       while (offset < block.rows.length) {
-        let capacity = rowsThatFit(remaining());
+        let capacity = rowsThatFit(remaining(), rowHeight);
 
         if (capacity === 0) {
           flush();
-          capacity = rowsThatFit(remaining());
+          capacity = rowsThatFit(remaining(), rowHeight);
 
           if (capacity === 0) {
             throw new PaginationError(
@@ -236,7 +272,7 @@ export function paginate(model: DocumentModel): DocumentPage[] {
         const slice = block.rows.slice(offset, offset + capacity);
         const partial: DocumentBlock = { ...block, rows: slice };
 
-        place(partial, (slice.length + 1) * BLOCK_METRICS.tableRowHeightPt, {
+        place(partial, (slice.length + 1) * rowHeight, {
           isContinuation: offset > 0,
         });
 
@@ -258,7 +294,7 @@ export function paginate(model: DocumentModel): DocumentPage[] {
           const item = block.items[offset + slice.length];
           if (item === undefined) break;
 
-          const itemHeight = termItemHeight(item);
+          const itemHeight = measurer.termItem(item);
 
           if (itemHeight > USABLE_HEIGHT) {
             throw new PaginationError(

@@ -301,12 +301,24 @@ function prepareSeal(): { width: number; height: number; transparentCorners: boo
   }
 
   /*
-   * The seal prints at 119 × 108.8 pt (§2.4). At 300 dpi that is ~496 px, so
-   * the 1312 px source is roughly 2.6× more detail than any output can show —
-   * and it weighs 1.7 MB keyed, which would sit in the browser bundle for no
-   * visible benefit. 800 px keeps it comfortably above print resolution.
+   * The seal prints at 119 × 108.8 pt — 1.65 inches (§2.4).
+   *
+   * 520 px across that width is 315 dpi, just above the 300 dpi print standard.
+   * The 1312 px source is 795 dpi at print size, which no printer resolves.
+   *
+   * The size matters more than it looks: `pdf-lib` embeds a PNG as raw RGBA
+   * samples, so the cost grows with the square of the edge. Measured in a real
+   * generated quotation:
+   *
+   *     800 px → 698 KB in the PDF   (484 dpi)
+   *     640 px → 464 KB              (387 dpi)
+   *     520 px → 318 KB              (315 dpi)   ← chosen
+   *     440 px → 234 KB              (266 dpi)   below the print standard
+   *
+   * At 800 px the seal alone was more than three quarters of a two-page
+   * quotation's file size, for detail nobody can see.
    */
-  const SEAL_MAX_EDGE = 800;
+  const SEAL_MAX_EDGE = 520;
   const scaled = downscale(output, SEAL_MAX_EDGE);
 
   write('seal-transparent.png', PNG.sync.write(scaled));
