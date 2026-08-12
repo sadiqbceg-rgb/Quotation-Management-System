@@ -1,0 +1,146 @@
+# Google Apps Script backend
+
+The V1 backend. It is the only component that touches Google Drive and Google
+Sheets, and the only place secrets exist.
+
+```
+React SPA  ──HTTPS POST──▶  Apps Script Web App  ──▶  Google Drive
+                                                 └──▶  Google Sheets
+```
+
+See `quotation-implementation-plan/IMPLEMENTATION_PLAN.md` §15 for the full
+architecture.
+
+---
+
+## Build
+
+```bash
+npm run gas:build      # TypeScript → dist-gas/Code.js (+ appsscript.json)
+npm run gas:push       # build, then `clasp push`
+```
+
+`src/` is TypeScript with real ES modules. esbuild bundles it into a single
+`Code.js` and re-exports `doPost` / `doGet` as top-level globals, which is what
+Apps Script requires. Never edit `dist-gas/` by hand — it is generated.
+
+The bundle targets **ES2019**, which is what the Apps Script V8 runtime
+supports. Do not raise that target.
+
+---
+
+## First-time setup
+
+1. `npm install -g @google/clasp && clasp login`
+2. Create the Apps Script project, bound to the **Quotation Tracking**
+   spreadsheet.
+3. `cp .clasp.json.example .clasp.json` and paste the script id.
+   `.clasp.json` is git-ignored — it identifies a live deployment.
+4. `npm run gas:push`
+5. Deploy as a Web App with the settings below.
+6. Set the Script Properties below.
+
+---
+
+## Web App deployment settings
+
+| Setting | Value |
+|---|---|
+| Execute as | **Me** (the company account that owns Drive and Sheets) |
+| Who has access | **Anyone** |
+
+"Anyone" is required, not preferred: a cross-origin browser `fetch` cannot
+complete Google's interactive sign-in, so any other setting makes the SPA
+unable to call the backend at all.
+
+**This means the endpoint URL is publicly reachable.** The URL is not a secret
+and is not a security boundary. Every non-public action must verify the session
+token and the caller's role in `main.ts` *before* any Drive or Sheets access.
+That check is the boundary. See IMPLEMENTATION_PLAN.md §15.1 and §19.
+
+---
+
+## Transport
+
+Requests are CORS **simple requests** — Apps Script cannot answer a preflight:
+
+```
+POST <web app /exec URL>
+Content-Type: text/plain;charset=utf-8
+
+{"action":"health","requestId":"<uuid>","token":"<session token>","payload":{}}
+```
+
+- `application/json` would trigger a preflight. Do not use it.
+- An `Authorization` header would trigger a preflight. The token goes in the body.
+- Responses are JSON via `ContentService`; HTTP status codes are not
+  controllable, so the outcome is carried in the envelope.
+
+Responses:
+
+```jsonc
+{ "ok": true,  "requestId": "…", "data": { } }
+{ "ok": false, "requestId": "…", "error": { "code": "VALIDATION_FAILED", "message": "…" } }
+```
+
+---
+
+## Script Properties
+
+Set these in the Apps Script editor under **Project Settings → Script
+Properties**. Never commit them, and never expose them to the frontend.
+
+### Required
+
+| Property | Purpose |
+|---|---|
+| `SESSION_HMAC_SECRET` | Signs session tokens. ≥ 32 random bytes. |
+| `PASSWORD_PEPPER` | Mixed into every password hash, so a leaked spreadsheet alone does not permit offline cracking. |
+| `DRIVE_ROOT_FOLDER_ID` | The `Quotation Archive` folder id. |
+| `TRACKING_SPREADSHEET_ID` | The `Quotation Tracking` spreadsheet id. |
+
+### Optional (defaults shown)
+
+| Property | Default | Purpose |
+|---|---|---|
+| `COMPANY_CODE` | `SFC` | Speed Falcon Company |
+| `BRANCH_CODE` | `RUH` | Riyadh branch |
+| `DOC_TYPE_CODE` | `QTN` | Quotation |
+| `ALLOWED_ORIGINS` | *(empty)* | Defence in depth only — Apps Script cannot enforce CORS. |
+
+Together the three codes produce the quotation number `SFC/RUH/QTN/YYYY/###`.
+They are configuration rather than literals so a second branch can be added
+without a rewrite.
+
+`missingProperties()` reports which required keys are absent, by **name only**.
+The `health` action surfaces that so an operator can diagnose a deployment
+without any value being disclosed.
+
+---
+
+## Two environments
+
+Maintain **two** deployments, each with its own Script Properties, its own
+spreadsheet and its own Drive root:
+
+- **Development** — for all testing. Never points at production data.
+- **Production** — the live endpoint.
+
+Deployments are immutable and versioned, so a rollback is re-pointing the
+deployment at a previous version rather than re-pushing code.
+
+---
+
+## Phase status
+
+| Phase | Adds |
+|---|---|
+| 01 *(done)* | Router, envelope, role table, Script Property accessors, `health` |
+| 02 | Sessions, password hashing, `resolveCaller`, rate limiting, audit log |
+| 03 | Quotation numbering (`LockService` + `Counters` + idempotency), quotation persistence |
+| 05 | Terms library |
+| 06 | Authorized persons and signature storage |
+| 10 | Drive folders and uploads |
+| 11 | Sheets tracking |
+| 12 | Security hardening |
+| 14 | Backups, monitoring, deployment |

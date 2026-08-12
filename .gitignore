@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+dist-gas/
+coverage/
+*.tsbuildinfo
+
+# generated assets — reproducible from reference/ by scripts/prepare-assets.ts (Phase 07)
+src/assets/generated/*
+!src/assets/generated/.gitkeep
+
+# environment — never commit anything but the example
+.env
+.env.*
+!.env.example
+
+# Google Apps Script — .clasp.json holds the live script id
+.clasp.json
+google-apps-script/.clasp.json
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+npm-debug.log*
+*.log
