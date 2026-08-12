@@ -36,6 +36,31 @@ export interface CallOptions {
   signal?: AbortSignal;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Session hooks                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Callbacks registered once by AuthProvider.
+ *
+ * They live here rather than being threaded through every call site so that a
+ * rejected session is handled the same way no matter which feature triggered
+ * it — a service that forgot to check would otherwise leave the user staring at
+ * a broken page with a dead token.
+ */
+export interface SessionHooks {
+  /** The backend rejected the session. Clear it and send the user to /login. */
+  onAuthFailure: (code: 'AUTH_REQUIRED' | 'AUTH_INVALID' | 'AUTH_EXPIRED') => void;
+  /** The backend renewed the session; store the replacement. */
+  onTokenRenewed: (token: string) => void;
+}
+
+let sessionHooks: SessionHooks | null = null;
+
+export function setSessionHooks(hooks: SessionHooks | null): void {
+  sessionHooks = hooks;
+}
+
 /**
  * Invoke a backend action.
  *
@@ -129,10 +154,22 @@ export async function callAction<TPayload, TData>(
   }
 
   if (parsed.ok) {
+    if (parsed.renewedToken !== undefined) {
+      sessionHooks?.onTokenRenewed(parsed.renewedToken);
+    }
     return parsed.data as TData;
   }
 
   const code = isErrorCode(parsed.error.code) ? parsed.error.code : 'INTERNAL_ERROR';
+
+  if (code === 'AUTH_REQUIRED' || code === 'AUTH_INVALID' || code === 'AUTH_EXPIRED') {
+    // `auth.login` produces AUTH_INVALID for a bad password, which is a form
+    // error rather than a dead session — do not tear the session down for it.
+    if (action !== 'auth.login') {
+      sessionHooks?.onAuthFailure(code);
+    }
+  }
+
   throw new AppError(code, parsed.error.message, {
     requestId: parsed.requestId,
     ...(parsed.error.fields === undefined ? {} : { fields: parsed.error.fields }),

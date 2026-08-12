@@ -24,6 +24,12 @@ export interface ApiSuccess<TData> {
   ok: true;
   requestId: string;
   data: TData;
+  /**
+   * Present when the backend silently renewed a session that was close to
+   * expiry (IMPLEMENTATION_PLAN.md §18.3). The client swaps it in so an active
+   * session never dies mid-task.
+   */
+  renewedToken?: string;
 }
 
 export interface ApiFailure {

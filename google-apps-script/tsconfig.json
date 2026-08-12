@@ -4,7 +4,7 @@
     "lib": ["ES2019"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["google-apps-script"],
+    "types": ["google-apps-script", "node", "vitest/globals"],
 
     "noEmit": true,
     "isolatedModules": true,

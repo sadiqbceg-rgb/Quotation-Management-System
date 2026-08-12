@@ -44,10 +44,10 @@ supports. Do not raise that target.
 
 ## Web App deployment settings
 
-| Setting | Value |
-|---|---|
-| Execute as | **Me** (the company account that owns Drive and Sheets) |
-| Who has access | **Anyone** |
+| Setting        | Value                                                   |
+| -------------- | ------------------------------------------------------- |
+| Execute as     | **Me** (the company account that owns Drive and Sheets) |
+| Who has access | **Anyone**                                              |
 
 "Anyone" is required, not preferred: a cross-origin browser `fetch` cannot
 complete Google's interactive sign-in, so any other setting makes the SPA
@@ -55,7 +55,7 @@ unable to call the backend at all.
 
 **This means the endpoint URL is publicly reachable.** The URL is not a secret
 and is not a security boundary. Every non-public action must verify the session
-token and the caller's role in `main.ts` *before* any Drive or Sheets access.
+token and the caller's role in `main.ts` _before_ any Drive or Sheets access.
 That check is the boundary. See IMPLEMENTATION_PLAN.md §15.1 and §19.
 
 ---
@@ -92,21 +92,21 @@ Properties**. Never commit them, and never expose them to the frontend.
 
 ### Required
 
-| Property | Purpose |
-|---|---|
-| `SESSION_HMAC_SECRET` | Signs session tokens. ≥ 32 random bytes. |
-| `PASSWORD_PEPPER` | Mixed into every password hash, so a leaked spreadsheet alone does not permit offline cracking. |
-| `DRIVE_ROOT_FOLDER_ID` | The `Quotation Archive` folder id. |
-| `TRACKING_SPREADSHEET_ID` | The `Quotation Tracking` spreadsheet id. |
+| Property                  | Purpose                                                                                         |
+| ------------------------- | ----------------------------------------------------------------------------------------------- |
+| `SESSION_HMAC_SECRET`     | Signs session tokens. ≥ 32 random bytes.                                                        |
+| `PASSWORD_PEPPER`         | Mixed into every password hash, so a leaked spreadsheet alone does not permit offline cracking. |
+| `DRIVE_ROOT_FOLDER_ID`    | The `Quotation Archive` folder id.                                                              |
+| `TRACKING_SPREADSHEET_ID` | The `Quotation Tracking` spreadsheet id.                                                        |
 
 ### Optional (defaults shown)
 
-| Property | Default | Purpose |
-|---|---|---|
-| `COMPANY_CODE` | `SFC` | Speed Falcon Company |
-| `BRANCH_CODE` | `RUH` | Riyadh branch |
-| `DOC_TYPE_CODE` | `QTN` | Quotation |
-| `ALLOWED_ORIGINS` | *(empty)* | Defence in depth only — Apps Script cannot enforce CORS. |
+| Property          | Default   | Purpose                                                  |
+| ----------------- | --------- | -------------------------------------------------------- |
+| `COMPANY_CODE`    | `SFC`     | Speed Falcon Company                                     |
+| `BRANCH_CODE`     | `RUH`     | Riyadh branch                                            |
+| `DOC_TYPE_CODE`   | `QTN`     | Quotation                                                |
+| `ALLOWED_ORIGINS` | _(empty)_ | Defence in depth only — Apps Script cannot enforce CORS. |
 
 Together the three codes produce the quotation number `SFC/RUH/QTN/YYYY/###`.
 They are configuration rather than literals so a second branch can be added
@@ -131,16 +131,46 @@ deployment at a previous version rather than re-pushing code.
 
 ---
 
+## Password hashing — measure before go-live
+
+`hashPassword` uses PBKDF2-HMAC-SHA256 with a per-user salt, a per-record
+iteration count, and a server-side pepper.
+
+`Utilities.computeHmacSha256Signature` is a host bridge call, so it is far
+slower than a native PBKDF2. **`DEFAULT_PBKDF2_ITERATIONS` (currently 10,000) is
+a starting point, not a measured value.** Before go-live:
+
+1. Open the Apps Script editor on the real deployment.
+2. Run `measurePasswordHashCost()` and read the log.
+3. Set the highest count that keeps a login under ~1.5 s.
+4. Record the measurement here.
+
+The count is stored per user record, so raising it later is safe: an existing
+hash verifies at its own count and is transparently re-hashed at the new one on
+that user's next sign-in.
+
+The pepper is the strongest of the three defences: an attacker who exfiltrates
+the `Users` sheet cannot mount an offline attack without also compromising the
+Apps Script project, where the pepper lives.
+
+Credential material is stored as **lowercase hex, not base64**. Every sheet
+write passes through `escapeForSheet`, which prefixes an apostrophe to a value
+starting with `=`, `+`, `-` or `@`; base64 can start with `+` or `/`, so a hash
+could be stored altered and then fail to verify — intermittently, depending on
+the random salt.
+
+---
+
 ## Phase status
 
-| Phase | Adds |
-|---|---|
-| 01 *(done)* | Router, envelope, role table, Script Property accessors, `health` |
-| 02 | Sessions, password hashing, `resolveCaller`, rate limiting, audit log |
-| 03 | Quotation numbering (`LockService` + `Counters` + idempotency), quotation persistence |
-| 05 | Terms library |
-| 06 | Authorized persons and signature storage |
-| 10 | Drive folders and uploads |
-| 11 | Sheets tracking |
-| 12 | Security hardening |
-| 14 | Backups, monitoring, deployment |
+| Phase       | Adds                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------- |
+| 01 _(done)_ | Router, envelope, role table, Script Property accessors, `health`                     |
+| 02 _(done)_ | Sessions, password hashing, `resolveCaller`, rate limiting, audit log                 |
+| 03          | Quotation numbering (`LockService` + `Counters` + idempotency), quotation persistence |
+| 05          | Terms library                                                                         |
+| 06          | Authorized persons and signature storage                                              |
+| 10          | Drive folders and uploads                                                             |
+| 11          | Sheets tracking                                                                       |
+| 12          | Security hardening                                                                    |
+| 14          | Backups, monitoring, deployment                                                       |

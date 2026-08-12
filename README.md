@@ -98,23 +98,23 @@ Work proceeds one phase at a time; each is a standalone prompt in
 `quotation-implementation-plan/prompts/`, and each ends with typecheck, lint,
 build and tests green.
 
-| Phase                     | Status            |
-| ------------------------- | ----------------- |
-| 00 Project Analysis       | planning complete |
-| **01 Project Foundation** | **complete**      |
-| 02 Authentication         | not started       |
-| 03 Quotation Core         | not started       |
-| 04 Item Categories        | not started       |
-| 05 Terms & Conditions     | not started       |
-| 06 Authorized Persons     | not started       |
-| 07 Quotation Document     | not started       |
-| 08 PDF Generation         | not started       |
-| 09 DOCX Generation        | not started       |
-| 10 Google Drive           | not started       |
-| 11 Google Sheets          | not started       |
-| 12 Security               | not started       |
-| 13 Testing                | not started       |
-| 14 Production Deployment  | not started       |
+| Phase                    | Status            |
+| ------------------------ | ----------------- |
+| 00 Project Analysis      | planning complete |
+| 01 Project Foundation    | complete          |
+| **02 Authentication**    | **complete**      |
+| 03 Quotation Core        | not started       |
+| 04 Item Categories       | not started       |
+| 05 Terms & Conditions    | not started       |
+| 06 Authorized Persons    | not started       |
+| 07 Quotation Document    | not started       |
+| 08 PDF Generation        | not started       |
+| 09 DOCX Generation       | not started       |
+| 10 Google Drive          | not started       |
+| 11 Google Sheets         | not started       |
+| 12 Security              | not started       |
+| 13 Testing               | not started       |
+| 14 Production Deployment | not started       |
 
 ---
 

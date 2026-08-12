@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { NAV_ITEMS, COMPANY_IDENTITY } from '@/config/navigation';
+import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/utils/cn';
 
 export interface SidebarProps {
@@ -9,6 +10,14 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ open, onNavigate }: SidebarProps) {
+  const { role } = useAuth();
+
+  // Hide destinations the user cannot use. Cosmetic only — the route guard and
+  // the backend both re-check, so hiding a link is never the access control.
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => item.requiredRole === undefined || item.requiredRole === role,
+  );
+
   return (
     <nav
       aria-label="Main"
@@ -25,7 +34,7 @@ export function Sidebar({ open, onNavigate }: SidebarProps) {
       </div>
 
       <ul className="flex flex-col gap-0.5 p-3">
-        {NAV_ITEMS.map((item) => (
+        {visibleItems.map((item) => (
           <li key={item.path}>
             <NavLink
               to={item.path}

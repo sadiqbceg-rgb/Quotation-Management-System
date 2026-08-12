@@ -39,6 +39,13 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.flatConfigs.recommended.rules,
 
+      /*
+       * `role` is a legitimate prop name on our own components (RequireRole),
+       * and it is not the ARIA attribute. ignoreNonDOM keeps the rule pointed
+       * at real DOM elements, where it matters.
+       */
+      'jsx-a11y/aria-role': ['error', { ignoreNonDOM: true }],
+
       /* Security — see IMPLEMENTATION_PLAN.md §19.6. These are errors, not warnings. */
       'react/no-danger': 'error',
       'no-eval': 'error',

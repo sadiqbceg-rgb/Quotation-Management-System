@@ -42,6 +42,10 @@ await build({
       '// Apps Script entry points — must be top-level globals.',
       'function doPost(e) { return __app.doPost(e); }',
       'function doGet(e) { return __app.doGet(e); }',
+      '',
+      '// Operator-only, run from the Apps Script editor. Not reachable over HTTP.',
+      'function runProvisioning() { return __app.runProvisioning(); }',
+      'function measurePasswordHashCost(iterations) { return __app.measurePasswordHashCost(iterations); }',
     ].join('\n'),
   },
 });

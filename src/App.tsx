@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from 'react-router-dom';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { ToastProvider } from '@/components/common/Toast';
+import { AuthProvider } from '@/contexts/AuthContext';
 import { router } from '@/router';
 
 /**
@@ -34,7 +35,11 @@ export function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
-          <RouterProvider router={router} />
+          {/* AuthProvider sits inside the router-less tree so the session is
+              resolved once, above every route, before any guard runs. */}
+          <AuthProvider>
+            <RouterProvider router={router} />
+          </AuthProvider>
         </ToastProvider>
       </QueryClientProvider>
     </ErrorBoundary>

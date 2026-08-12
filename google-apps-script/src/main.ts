@@ -5,10 +5,10 @@
  * TRANSPORT
  * ---------------------------------------------------------------------------
  * Apps Script Web Apps cannot answer a CORS preflight and cannot set
- * `Access-Control-Allow-*` headers, so the browser must send a CORS *simple
- * request*: a POST with `Content-Type: text/plain;charset=utf-8` carrying a
- * JSON string. One endpoint, one `action` discriminator. The session token
- * travels in the body, because an `Authorization` header would trigger a
+ * `Access-Control-Allow-*` headers. Every call from the browser must therefore
+ * be a CORS *simple request*: a POST with `Content-Type: text/plain;charset=utf-8`
+ * carrying a JSON string. One endpoint, one `action` discriminator. The session
+ * token travels in the body, because an `Authorization` header would trigger a
  * preflight. See IMPLEMENTATION_PLAN.md §15.2.
  *
  * ---------------------------------------------------------------------------
@@ -16,32 +16,26 @@
  * ---------------------------------------------------------------------------
  * This Web App is deployed with "Who has access: Anyone", so the URL is
  * PUBLICLY REACHABLE. The URL is not a secret and is not a security boundary.
- * The boundary is the session token plus the per-action role check performed
- * here, before any Drive or Sheets access. See §15.1 and §19.1.
+ * The boundary is the session token plus the per-action access check performed
+ * here, before any handler runs and before any Drive or Sheets access. See
+ * §15.1 and §19.1.
  *
- * Phase 01 establishes the router, the envelope and the role table. Phase 02
- * fills in `resolveCaller` with real token verification. The table exists now
- * so that authorization is slotted into an existing check rather than being
- * retrofitted onto handlers later, where one omission becomes an escalation.
+ * Authorization is declared in ONE place — the ACTIONS table — and enforced in
+ * ONE place, `handlePost`. A handler must never authorise itself.
  */
 
-import { isFullyConfigured, missingProperties } from './config/properties';
+import * as auth from './auth/handlers';
+import { isTokenRevoked } from './auth/session';
+import { nowSeconds, shouldRenew, issueToken, verifyToken } from './auth/token';
+import { isFullyConfigured, missingProperties, requireProperty } from './config/properties';
+import { ApiError, type Caller, type ErrorCode, type HandlerContext } from './errors';
+import * as users from './sheets/users-repository';
 
-export const API_VERSION = '0.1.0';
+export const API_VERSION = '0.2.0';
 
 /* -------------------------------------------------------------------------- */
 /* Envelope                                                                   */
 /* -------------------------------------------------------------------------- */
-
-type ErrorCode =
-  | 'AUTH_REQUIRED'
-  | 'AUTH_INVALID'
-  | 'AUTH_EXPIRED'
-  | 'FORBIDDEN'
-  | 'RATE_LIMITED'
-  | 'VALIDATION_FAILED'
-  | 'CONFIG_MISSING'
-  | 'INTERNAL_ERROR';
 
 interface ApiRequest {
   action?: unknown;
@@ -60,36 +54,20 @@ interface ApiSuccessBody {
   ok: true;
   requestId: string;
   data: unknown;
-}
-
-export class ApiError extends Error {
-  public readonly code: ErrorCode;
-  public readonly fields: Record<string, string> | undefined;
-
-  constructor(code: ErrorCode, message: string, fields?: Record<string, string>) {
-    super(message);
-    this.code = code;
-    this.fields = fields;
-  }
+  /** Present when the session was silently renewed; the client swaps it in. */
+  renewedToken?: string;
 }
 
 /* -------------------------------------------------------------------------- */
-/* Roles and the action table                                                 */
+/* Access levels and the action table                                         */
 /* -------------------------------------------------------------------------- */
 
-export type Role = 'Admin' | 'User';
-/** `public` means no session is required. Only health and login may be public. */
-export type AccessLevel = Role | 'public';
-
-export interface Caller {
-  email: string;
-  role: Role;
-}
-
-export interface HandlerContext {
-  requestId: string;
-  caller: Caller | null;
-}
+/**
+ * `public`        — no session required. Only health and login may be public.
+ * `authenticated` — any signed-in, active user.
+ * `Admin`         — Admin role only.
+ */
+export type AccessLevel = 'public' | 'authenticated' | 'Admin';
 
 export type Handler = (payload: unknown, context: HandlerContext) => unknown;
 
@@ -98,39 +76,87 @@ export interface ActionDefinition {
   handler: Handler;
 }
 
-/**
- * The single source of truth for authorization.
- *
- * Role checks live here and only here. A handler must never authorise itself —
- * that is how one forgotten check becomes a privilege escalation (§19.2).
- */
+/** The single source of truth for authorization (§19.2). */
 export const ACTIONS: Record<string, ActionDefinition> = {
   health: {
     access: 'public',
-    handler: () => ({
-      status: 'ok',
-      configured: isFullyConfigured(),
-      // Names only — never values (§19.7).
-      missing: missingProperties(),
-      version: API_VERSION,
-      serverTime: new Date().toISOString(),
-    }),
+    handler: () => healthPayload(),
+  },
+
+  'auth.login': {
+    access: 'public',
+    handler: auth.login,
+  },
+  'auth.logout': {
+    access: 'authenticated',
+    handler: auth.logout,
+  },
+  'auth.me': {
+    access: 'authenticated',
+    handler: auth.me,
+  },
+  'admin.createUser': {
+    access: 'Admin',
+    handler: auth.createUser,
   },
 };
 
+function healthPayload(): Record<string, unknown> {
+  return {
+    status: 'ok',
+    configured: isFullyConfigured(),
+    // Names only — never values (§19.7).
+    missing: missingProperties(),
+    version: API_VERSION,
+    serverTime: new Date().toISOString(),
+  };
+}
+
 /* -------------------------------------------------------------------------- */
-/* Authentication hook (Phase 02)                                             */
+/* Caller resolution                                                          */
 /* -------------------------------------------------------------------------- */
+
+export type CallerFailure = 'missing' | 'invalid' | 'expired';
+
+export type CallerResult = { ok: true; caller: Caller } | { ok: false; reason: CallerFailure };
 
 /**
  * Resolve the caller from the request token.
  *
- * PHASE 02 INTEGRATION POINT. Until then no non-public action exists, so a
- * request for one is refused rather than allowed through. Failing closed is
- * the only acceptable default for an endpoint that anyone can reach.
+ * Four independent checks, all required. Signature and expiry come from the
+ * token itself; revocation and the account's current state must be looked up,
+ * because both can change after a token was issued — a signed-out or
+ * deactivated user's existing token has to stop working immediately (§18.3).
  */
-export function resolveCaller(_token: string | undefined): Caller | null {
-  return null;
+export function resolveCaller(rawToken: string | undefined): CallerResult {
+  if (typeof rawToken !== 'string' || rawToken.length === 0) {
+    return { ok: false, reason: 'missing' };
+  }
+
+  const now = nowSeconds();
+  const verified = verifyToken(rawToken, requireProperty('SESSION_HMAC_SECRET'), now);
+
+  if (!verified.ok) {
+    return { ok: false, reason: verified.reason === 'expired' ? 'expired' : 'invalid' };
+  }
+
+  const payload = verified.payload;
+
+  if (isTokenRevoked(payload.jti, now)) {
+    return { ok: false, reason: 'expired' };
+  }
+
+  const record = users.findByEmail(payload.sub);
+  if (record === null || !record.active) {
+    return { ok: false, reason: 'invalid' };
+  }
+
+  return {
+    ok: true,
+    // The role comes from the SHEET, not from the token: a role changed after
+    // issue must take effect at once, and a forged claim must never be trusted.
+    caller: { email: record.email, role: record.role, jti: payload.jti, exp: payload.exp },
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -144,15 +170,14 @@ function jsonOutput(body: ApiSuccessBody | ApiFailureBody): GoogleAppsScript.Con
 }
 
 function failure(requestId: string, error: ApiError): GoogleAppsScript.Content.TextOutput {
-  const body: ApiFailureBody = {
+  return jsonOutput({
     ok: false,
     requestId,
     error:
       error.fields === undefined
         ? { code: error.code, message: error.message }
         : { code: error.code, message: error.message, fields: error.fields },
-  };
-  return jsonOutput(body);
+  });
 }
 
 function parseRequest(raw: string | undefined): ApiRequest {
@@ -168,8 +193,7 @@ function parseRequest(raw: string | undefined): ApiRequest {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new ApiError('VALIDATION_FAILED', 'Request body must be a JSON object.');
   }
-  // Every ApiRequest field is optional and `unknown`; the narrowing above is
-  // enough. Each field is validated individually before use.
+  // Every ApiRequest field is optional and `unknown`; each is validated below.
   return parsed;
 }
 
@@ -199,20 +223,45 @@ export function handlePost(raw: string | undefined): GoogleAppsScript.Content.Te
     }
 
     let caller: Caller | null = null;
+    let renewedToken: string | undefined;
 
     if (definition.access !== 'public') {
-      caller = resolveCaller(asString(request.token));
-      if (caller === null) {
-        throw new ApiError('AUTH_REQUIRED', 'Authentication is required.');
+      const resolved = resolveCaller(asString(request.token));
+
+      if (!resolved.ok) {
+        throw new ApiError(
+          resolved.reason === 'missing'
+            ? 'AUTH_REQUIRED'
+            : resolved.reason === 'expired'
+              ? 'AUTH_EXPIRED'
+              : 'AUTH_INVALID',
+          'Authentication is required.',
+        );
       }
+
+      caller = resolved.caller;
+
       if (definition.access === 'Admin' && caller.role !== 'Admin') {
         throw new ApiError('FORBIDDEN', 'You do not have permission to perform this action.');
+      }
+
+      // Silent renewal, so an active session never expires mid-task (§18.3).
+      if (shouldRenew(caller.exp)) {
+        renewedToken = issueToken(
+          caller.email,
+          caller.role,
+          requireProperty('SESSION_HMAC_SECRET'),
+        );
       }
     }
 
     const data = definition.handler(request.payload, { requestId, caller });
 
-    const body: ApiSuccessBody = { ok: true, requestId, data };
+    const body: ApiSuccessBody =
+      renewedToken === undefined
+        ? { ok: true, requestId, data }
+        : { ok: true, requestId, data, renewedToken };
+
     return jsonOutput(body);
   } catch (thrown: unknown) {
     if (thrown instanceof ApiError) {
@@ -244,16 +293,12 @@ export function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Cont
 
 /** GET exists only as a liveness probe. All real work goes through POST. */
 export function doGet(): GoogleAppsScript.Content.TextOutput {
-  const body: ApiSuccessBody = {
-    ok: true,
-    requestId: 'health',
-    data: {
-      status: 'ok',
-      configured: isFullyConfigured(),
-      missing: missingProperties(),
-      version: API_VERSION,
-      serverTime: new Date().toISOString(),
-    },
-  };
-  return jsonOutput(body);
+  return jsonOutput({ ok: true, requestId: 'health', data: healthPayload() });
 }
+
+/**
+ * Operator-only entry points, exposed for the Apps Script editor.
+ * They are NOT in the ACTIONS table and are unreachable over HTTP.
+ */
+export { provisionFirstAdmin, runProvisioning } from './auth/provisioning';
+export { measurePasswordHashCost } from './auth/password';
