@@ -1,0 +1,41 @@
+#
+# Security headers for the static host.
+#
+# This file is copied verbatim into `dist/` by Vite and is read by Netlify and
+# Cloudflare Pages. SECURITY.md carries the equivalent configuration for Vercel,
+# nginx and Apache — the host is chosen in Phase 14, and the policy must not
+# depend on which one it is.
+#
+# ---------------------------------------------------------------------------
+# WHY THE CSP IS SHAPED THIS WAY
+# ---------------------------------------------------------------------------
+# The session token lives in memory and in `sessionStorage`, because Apps Script
+# cannot set an HttpOnly cookie for a cross-origin SPA. That makes cross-site
+# scripting the highest-value attack on this application: a script that runs on
+# this origin can read the token and then act as that user against the backend.
+#
+# So `script-src 'self'` with no `unsafe-inline` and no `unsafe-eval` is the
+# control that matters most here. It is not decoration; it is the mitigation the
+# token-storage trade-off was accepted against (IMPLEMENTATION_PLAN.md §18.3).
+#
+# `style-src` DOES allow inline: React sets style attributes, and the quotation
+# preview positions the signature block and scales the page with them. Inline
+# styles cannot execute script, so this is a real difference in risk, not a
+# convenience.
+#
+# `connect-src` names the two Apps Script hosts because a Web App call is
+# 302-redirected from `script.google.com` to `script.googleusercontent.com`.
+# Omitting the second breaks every request, which is exactly the kind of
+# breakage that gets a CSP turned off in production.
+#
+# `blob:` and `data:` are in `img-src` for the seal, the signature (a data URI)
+# and the rendered letterhead preview. Generated PDFs and Word files are handed
+# to the browser as blob downloads.
+#
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://script.google.com https://script.googleusercontent.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  X-Frame-Options: DENY

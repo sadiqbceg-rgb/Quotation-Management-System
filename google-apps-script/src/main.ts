@@ -33,6 +33,8 @@ import * as persons from './persons/handlers';
 import * as quotation from './quotation/handlers';
 import * as terms from './terms/handlers';
 import { ApiError, type Caller, type ErrorCode, type HandlerContext } from './errors';
+import { checkRequestLimits, rateLimitError } from './security/rate-limiter';
+import { parseRequestBody } from './security/sanitize';
 import * as users from './sheets/users-repository';
 
 export const API_VERSION = '0.6.0';
@@ -293,16 +295,20 @@ function failure(requestId: string, error: ApiError): GoogleAppsScript.Content.T
   });
 }
 
+/**
+ * The one place a request string becomes an object.
+ *
+ * Structural safety — prototype-pollution keys, nesting depth, payload size —
+ * is enforced by `parseRequestBody` for EVERY action, before any handler runs.
+ * A per-handler check is one the next handler will not have (§19.3).
+ */
 function parseRequest(raw: string | undefined): ApiRequest {
   if (raw === undefined || raw.length === 0) {
     throw new ApiError('VALIDATION_FAILED', 'Request body is empty.');
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new ApiError('VALIDATION_FAILED', 'Request body is not valid JSON.');
-  }
+
+  const parsed = parseRequestBody(raw);
+
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new ApiError('VALIDATION_FAILED', 'Request body must be a JSON object.');
   }
@@ -333,6 +339,19 @@ export function handlePost(raw: string | undefined): GoogleAppsScript.Content.Te
     if (definition === undefined) {
       // Deliberately does not echo the action back, to avoid reflecting input.
       throw new ApiError('VALIDATION_FAILED', 'Unknown action.');
+    }
+
+    /*
+     * Throttling, before authentication.
+     *
+     * Deliberate: verifying a token costs an HMAC and a sheet read, so a client
+     * in a retry loop would spend the deployment's daily quota on rejecting its
+     * own requests. The global window counts every action; the per-action
+     * window needs a token and is applied to the expensive ones (§19.8).
+     */
+    const limit = checkRequestLimits(action, asString(request.token), nowSeconds());
+    if (!limit.allowed) {
+      throw rateLimitError(limit);
     }
 
     let caller: Caller | null = null;

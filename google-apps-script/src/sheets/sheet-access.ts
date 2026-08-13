@@ -39,7 +39,40 @@ export function getOrCreateSheet(
   const sheet = spreadsheet.insertSheet(name);
   sheet.getRange(1, 1, 1, headers.length).setValues([headers.slice()]);
   sheet.setFrozenRows(1);
+
+  if (SENSITIVE_SHEETS.indexOf(name) !== -1) hideSheet(sheet);
+
   return sheet;
+}
+
+/**
+ * Sheets that must not be visible to someone opening the spreadsheet.
+ *
+ * `Users` holds password hashes, salts and iteration counts; `AuditLog` holds
+ * who did what and when. Neither is business data anyone needs to browse, and
+ * both are a gift to someone with read access who should not have had it
+ * (§17.3, §19.9).
+ */
+export const SENSITIVE_SHEETS: readonly string[] = ['Users', 'AuditLog'];
+
+/**
+ * Hide a sheet, on a best-effort basis.
+ *
+ * Hiding is NOT access control — anyone with edit rights can unhide it — and
+ * SECURITY.md says so. The real control is who the spreadsheet is shared with,
+ * plus the protected ranges an owner applies by hand.
+ *
+ * Deliberately not done with `Protection`: `protect().removeEditors()` from a
+ * script can lock the company out of its own spreadsheet, and a security
+ * measure that risks losing the record system is not one worth taking
+ * automatically.
+ */
+function hideSheet(sheet: GoogleAppsScript.Spreadsheet.Sheet): void {
+  try {
+    sheet.hideSheet();
+  } catch {
+    // A host that will not hide a sheet must not fail a quotation save.
+  }
 }
 
 /** Every data row, excluding the header. Empty when the sheet has no data. */

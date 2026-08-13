@@ -184,6 +184,8 @@ export interface SheetFake {
   /** Conditional format rules, as their formulas. */
   conditionalRules: string[];
   frozenRows: number;
+  /** True once `hideSheet()` has been called — `Users` and `AuditLog`. */
+  hidden: boolean;
 }
 
 export interface SpreadsheetFake {
@@ -204,6 +206,9 @@ export function createSpreadsheetFake(): SpreadsheetFake {
       getLastColumn: (): number =>
         sheet.rows.reduce((widest, row) => Math.max(widest, row.length), 0),
       getMaxRows: (): number => Math.max(sheet.rows.length, 1_000),
+      hideSheet: (): void => {
+        sheet.hidden = true;
+      },
       setFrozenRows: (rows: number): void => {
         sheet.frozenRows = rows;
       },
@@ -273,6 +278,7 @@ export function createSpreadsheetFake(): SpreadsheetFake {
         validations: new Map<number, string[]>(),
         conditionalRules: [],
         frozenRows: 0,
+        hidden: false,
       };
       sheets.set(name, sheet);
       return buildSheet(sheet);

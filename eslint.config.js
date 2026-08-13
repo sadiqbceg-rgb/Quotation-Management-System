@@ -52,8 +52,34 @@ export default tseslint.config(
       'no-implied-eval': 'error',
       'no-new-func': 'error',
       'no-script-url': 'error',
+      /*
+       * `document.write` is `eval` for markup, and it is the one dangerous DOM
+       * API the rules above do not cover.
+       */
+      'no-restricted-properties': [
+        'error',
+        { object: 'document', property: 'write', message: 'document.write is forbidden (§19.6).' },
+        {
+          object: 'document',
+          property: 'writeln',
+          message: 'document.write is forbidden (§19.6).',
+        },
+      ],
 
-      /* Type safety */
+      /*
+       * Type safety AT THE UNTRUSTED BOUNDARY.
+       *
+       * `no-unsafe-*` is what stops a parsed response being used as though it
+       * were the type we hoped for. Every one of these is an error, not a
+       * warning, and none is suppressed in application code — a suppressed
+       * security rule is a rule that is not enforced (Phase 12).
+       */
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-call': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
+      '@typescript-eslint/no-unsafe-argument': 'error',
+
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
@@ -107,8 +133,37 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+
+      /* The backend runs as the company's Google identity. Same rules apply. */
       'no-eval': 'error',
+      'no-implied-eval': 'error',
       'no-new-func': 'error',
+      'no-script-url': 'error',
+
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-call': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
+      '@typescript-eslint/no-unsafe-argument': 'error',
+
+      /*
+       * Fixtures fake the whole Apps Script host, so nothing under
+       * `__fixtures__` may be reachable from deployed code (§20.4). esbuild
+       * bundles from `main.ts`, so this is belt and braces — but the braces are
+       * what turn "we would have noticed" into "it cannot happen".
+       */
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/__fixtures__/**'],
+              message:
+                'Test fixtures may only be imported from test files. See IMPLEMENTATION_PLAN.md §20.4.',
+            },
+          ],
+        },
+      ],
     },
   },
 

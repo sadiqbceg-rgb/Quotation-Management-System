@@ -114,8 +114,8 @@ build and tests green.
 | 08 PDF Generation        | complete          |
 | 09 DOCX Generation       | complete          |
 | 10 Google Drive          | complete          |
-| **11 Google Sheets**     | **complete**      |
-| 12 Security              | not started       |
+| 11 Google Sheets         | complete          |
+| **12 Security**          | **complete**      |
 | 13 Testing               | not started       |
 | 14 Production Deployment | not started       |
 
@@ -299,6 +299,49 @@ makes a re-save update the row instead of adding a second one).
 A failed register write after a successful upload is a warning, not a failed
 save: the documents are in Drive, and **Retry Tracking** writes the row from the
 archive without re-sending them.
+
+---
+
+## Security
+
+`SECURITY.md` is the operating document: the threat model, the accepted risks,
+what an operator must configure, and the key-rotation procedures.
+`quotation-implementation-plan/SECURITY_REVIEW.md` records the Phase 12 audit —
+a pass/fail with evidence for each of PRD §33's twenty requirements and each
+control in IMPLEMENTATION_PLAN.md §19, plus the eight findings and what was done
+about them.
+
+The fact everything else follows from: **the Apps Script endpoint is publicly
+reachable**, because a cross-origin `fetch` cannot complete Google's interactive
+sign-in. The URL is not a secret and not a boundary. The boundary is the session
+token plus the per-action check in the router — verified over the whole action
+table, not sampled.
+
+Four controls are worth knowing about:
+
+- **Structural safety is at the parse boundary.** `__proto__`, `constructor` and
+  `prototype` are refused at any depth, for every action, before a handler runs.
+  So is a payload nested past 12 levels — the walk is iterative precisely so it
+  cannot be overflowed by the input it exists to reject.
+- **Formula injection is a compile error.** `writeRow` accepts only
+  `PreparedCell`. The test states the invariant at its strongest: no cell in the
+  spreadsheet begins with `=`, `+`, `-` or `@`, with exactly one documented
+  exception — the Drive Folder hyperlink, built from a validated Drive URL.
+- **Rate limiting fails closed.** Per-session limits on the expensive actions
+  plus a global circuit breaker; if `CacheService` is unreachable the request is
+  refused. A limiter that disables itself under load opens the gap exactly when
+  it is needed.
+- **The CSP is verified in a browser, not just written down.** `public/_headers`
+  ships `script-src 'self'` with no `unsafe-inline` and no `unsafe-eval` — the
+  mitigation the `sessionStorage` token trade-off was accepted against — and
+  `e2e/csp.spec.ts` runs PDF and DOCX generation under that exact policy in
+  Chromium, treating a console error as a failure.
+
+```bash
+npm run build && npm test          # includes the security suites
+npx playwright test e2e/csp.spec.ts
+npm audit                          # 0 vulnerabilities
+```
 
 ---
 

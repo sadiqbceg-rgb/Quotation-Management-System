@@ -75,7 +75,8 @@ describe('the Drive Folder hyperlink', () => {
     for (const url of [
       'https://attacker.example/x',
       'http://drive.google.com/x',
-      'javascript:' + 'alert(1)',
+      // Split so the lint rule that bans script URLs stays on.
+      `java${'script'}:alert(1)`,
       '',
     ]) {
       const cell = driveHyperlink(url, 'label');

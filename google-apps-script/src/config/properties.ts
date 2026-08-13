@@ -124,6 +124,22 @@ export function companyVatNumber(): string {
   return fallback;
 }
 
+/**
+ * The configured origin allowlist.
+ *
+ * ---------------------------------------------------------------------------
+ * THIS IS NOT ENFORCED, AND CANNOT BE
+ * ---------------------------------------------------------------------------
+ * An Apps Script Web App does not receive request headers: `doPost` is handed
+ * `postData` and `parameter`, and nothing else. There is no `Origin` to check,
+ * and no way to set `Access-Control-Allow-Origin` on the response — which is
+ * also why the whole transport is built as a CORS simple request (§15.2).
+ *
+ * So the property is retained as a record of intent for a future backend that
+ * CAN enforce it, and nothing calls this at request time. Believing otherwise
+ * would be the dangerous outcome: the real boundary is the session token plus
+ * the per-action check in the router. SECURITY.md states this plainly.
+ */
 export function allowedOrigins(): string[] {
   return optionalProperty('ALLOWED_ORIGINS')
     .split(',')
