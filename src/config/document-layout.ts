@@ -50,12 +50,26 @@ export const BODY_BOX = {
   },
 } as const;
 
-/** The same margins expressed for a Word section. */
+/**
+ * The same margins expressed for a Word section.
+ *
+ * `header` and `footer` are where Word starts drawing those bands, measured
+ * from the page edge. They are the letterhead's own logo top and footer rule,
+ * so the rebuilt header and footer land where the artwork does — and, more
+ * importantly, so the header is short enough to fit above `top` and does not
+ * push the body text down the page.
+ */
 export const PAGE_MARGINS_TWIPS = {
   top: pointsToTwips(BODY_BOX.topPt),
   bottom: pointsToTwips(PAGE.heightPt - BODY_BOX.bottomPt),
   left: pointsToTwips(BODY_BOX.leftPt),
   right: pointsToTwips(PAGE.widthPt - BODY_BOX.rightPt),
+  get header(): number {
+    return pointsToTwips(LETTERHEAD.logoRect.y0);
+  },
+  get footer(): number {
+    return pointsToTwips(PAGE.heightPt - LETTERHEAD.footerRule.y0);
+  },
 } as const;
 
 /* -------------------------------------------------------------------------- */
@@ -69,6 +83,19 @@ export const LETTERHEAD = {
   emblemRect: { x0: 498.3, y0: 2.9, x1: 580.9, y1: 65.9 },
   /** Red rule beneath the header block. */
   headerRule: { x0: 185.0, y0: 66.5, x1: 595.3, y1: 68.0 },
+  /**
+   * The right-hand text block: the company name above the rule, the
+   * commercial-registration line below it.
+   *
+   * Both are CENTRED on this block's axis (x 306.8), not aligned to the rule or
+   * to the page: the Latin name spans 191.1 → 422.9, the Arabic name
+   * 215.3 → 398.7 and the C.R. line 187.2 → 426.4, and all three share that
+   * centre. `arabicX` is where the C.R. line's Arabic half begins.
+   *
+   * Only the DOCX needs these — the PDF gets the whole block as vectors — but
+   * they are measured from the same artwork as everything else here.
+   */
+  rightBlock: { x0: 187.2, arabicX: 330.8, x1: 426.4 },
   /** Page-centred watermark (the logo, lightened). */
   watermarkRect: { x0: 148.1, y0: 333.5, x1: 466.2, y1: 508.4 },
   /** Rule above the footer block. */
@@ -124,8 +151,18 @@ export const SIGNATURE_BLOCK = {
   detailsLinePitchPt: 25.6,
   sealRect: { x0: 373.7, y0: 550.9, x1: 492.7, y1: 659.7 },
   signatureRect: { x0: 392.8, y0: 676.1, x1: 463.0, y1: 733.6 },
-  signatureLabelXPt: 495.0,
-  signatureLabelYPt: 716.0,
+  /**
+   * `Signature:______________`, measured at x 323.9 → 480.9, text top 703.4.
+   *
+   * The label runs UNDER the signature image, which is why its span (323.9 to
+   * 480.9) brackets the image's (392.8 to 463.0): the person signs on the line.
+   *
+   * Corrected in Phase 09 from x 495.0, y 716.0. At that x the label ran off the
+   * right edge of the page and was clipped on every quotation; at that y it sat
+   * a line below the signature instead of under it.
+   */
+  signatureLabelXPt: 323.9,
+  signatureLabelYPt: 703.4,
   /** Total height reserved so the block is never split across pages. */
   get reservedHeightPt(): number {
     return this.signatureRect.y1 - this.sealRect.y0;

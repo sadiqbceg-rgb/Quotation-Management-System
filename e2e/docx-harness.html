@@ -1,0 +1,22 @@
+<!doctype html>
+<!--
+  TEST ONLY — a browser harness for DOCX generation.
+
+  The Node tests already build real .docx packages and unzip them, but they run
+  under jsdom with the file system. This page exercises the parts only a real
+  browser has: fetching the letterhead images over HTTP, and `docx` packing a
+  ZIP without Node's Buffer or zlib.
+
+  It is not part of the application. Vite serves it only when Playwright asks
+  for it, and it is not an entry point of the production build.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>DOCX harness</title>
+  </head>
+  <body>
+    <pre id="result">running…</pre>
+    <script type="module" src="./docx-harness.ts"></script>
+  </body>
+</html>

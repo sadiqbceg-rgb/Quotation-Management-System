@@ -52,7 +52,7 @@ The backend is a separate deployment — see `google-apps-script/README.md`.
 | `npm run gas:build` | Bundle the Apps Script backend to `dist-gas/Code.js`        |
 | `npm run gas:push`  | Build, then `clasp push`                                    |
 | `npm run fonts`     | Rebuild the bundled Carlito TTFs from the licensed source   |
-| `npm run test:e2e`  | Playwright browser tests (PDF generation in a real browser) |
+| `npm run test:e2e`  | Playwright browser tests (PDF and DOCX in a real browser)   |
 
 ---
 
@@ -111,8 +111,8 @@ build and tests green.
 | 05 Terms & Conditions    | complete          |
 | 06 Authorized Persons    | complete          |
 | 07 Quotation Document    | complete          |
-| **08 PDF Generation**    | **complete**      |
-| 09 DOCX Generation       | not started       |
+| 08 PDF Generation        | complete          |
+| **09 DOCX Generation**   | **complete**      |
 | 10 Google Drive          | not started       |
 | 11 Google Sheets         | not started       |
 | 12 Security              | not started       |
@@ -145,7 +145,7 @@ fingerprint of every source in `manifest.json`. A test compares those
 fingerprints against the files on disk, so a pipeline that ever wrote back into
 `reference/` would fail the suite.
 
-One measurement worth knowing before Phase 08: the letterhead's MediaBox is
+One measurement worth knowing: the letterhead's MediaBox is
 `0 7.83 595.5 850.08`, while the quotation is `0 0 595.32 841.92`. Anything
 embedding the letterhead has to normalise that 7.83 pt y offset. It is recorded
 in the manifest and in `LETTERHEAD_SOURCE`.
@@ -184,6 +184,46 @@ One measurement that is easy to get wrong: the letterhead's MediaBox is
 `0 7.83 595.5 850.08`, not `0 0 595.28 841.89`. Drawing it at the origin scaled
 to A4 puts the red header rule 8 pt too high. It is drawn at natural size with
 its top edge on the page's top edge — see `pdf-layout-engine.ts`.
+
+---
+
+## Word generation
+
+`Save as Word` produces a real `.docx` client-side with `docx` (v9), from the
+**same** `DocumentModel` as the PDF — so the two files cannot disagree about
+section order, conditional columns, term wording or the quotation number. A test
+generates both from one model and compares what a client would read.
+
+The two renderers differ in one structural way, and everything else follows from
+it: **Word cannot embed a PDF page as a background.** So the top and bottom of
+the letterhead are REBUILT — the logo image plus the transcribed strings in
+`src/config/letterhead-content.ts` — declared once on the section as a header and
+a footer, which is what gives Word the every-page guarantee the PDF gets from its
+background. The watermark is a floating image inside the header, `behindDoc`,
+because that is where Word's own watermark feature lives.
+
+Consequences worth knowing:
+
+- **This is the one place Arabic is re-typeset.** The company name and the C.R.
+  line are emitted as `rightToLeft` runs and Word does the shaping. They are
+  fixed strings from the company's own letterhead — no user content is ever
+  emitted RTL, and a test asserts `<w:rtl>` appears in the header part and
+  nowhere else.
+- **Word paginates, not us.** `w:tblHeader` repeats table headers, `cantSplit`
+  keeps rows and the signature block whole, and the terms use a real numbering
+  definition — so the company can edit the file afterwards and Word renumbers.
+  The shared paginator is still used, but only to count pages for the caller.
+- **Fonts are requested, not embedded.** Calibri by name, Carlito as the
+  documented metric-compatible fallback. The package carries no font.
+
+`docx` and the letterhead images are dynamically imported: pressing the button is
+what downloads them. The main bundle grew 604 → 606 kB when this phase landed;
+the generator itself is a separate 379 kB chunk.
+
+The bands (header and footer) sit OUTSIDE the text margins, at negative indents:
+the logo starts at x 13.9 and the rules run to the page edge, while body text
+starts at x 34.0. See `docx-band.ts` — the alternative is a header inset 20 pt
+from where the artwork puts it.
 
 ---
 

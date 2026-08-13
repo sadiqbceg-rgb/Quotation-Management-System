@@ -9,14 +9,17 @@ export interface PreviewToolbarProps {
   /** Enabled in Phase 08. */
   onSavePdf: () => void;
   isSavingPdf: boolean;
+  /** Enabled in Phase 09. */
+  onSaveWord: () => void;
+  isSavingWord: boolean;
 }
 
 /**
  * Preview actions (PRD §29).
  *
- * `Back to Edit`, `Print` and `Save as PDF` work. `Save as Word` and
- * `Save to Google Drive` are rendered DISABLED with a tooltip naming the phase
- * that implements them.
+ * `Back to Edit`, `Print`, `Save as PDF` and `Save as Word` work.
+ * `Save to Google Drive` is rendered DISABLED with a tooltip naming the phase
+ * that implements it.
  *
  * Showing them disabled rather than hiding them is deliberate: the PRD promises
  * these actions, and a user who cannot see them assumes the feature is missing
@@ -36,6 +39,8 @@ export function PreviewToolbar({
   onPrint,
   onSavePdf,
   isSavingPdf,
+  onSaveWord,
+  isSavingWord,
 }: PreviewToolbarProps) {
   const pendingTitle = (phase: string): string =>
     canExport
@@ -69,7 +74,15 @@ export function PreviewToolbar({
         >
           Save as PDF
         </Button>
-        <Button disabled title={pendingTitle('09')}>
+        <Button
+          variant="secondary"
+          disabled={!canExport}
+          isLoading={isSavingWord}
+          onClick={onSaveWord}
+          {...(canExport
+            ? {}
+            : { title: 'Resolve the items listed above before the quotation can be exported.' })}
+        >
           Save as Word
         </Button>
         <Button disabled title={pendingTitle('10')}>

@@ -9,6 +9,7 @@ import { Spinner } from '@/components/common/Spinner';
 import { QuotationPreview } from '@/components/quotation/preview/QuotationPreview';
 import { PreviewToolbar } from '@/components/quotation/preview/PreviewToolbar';
 import { useAuth } from '@/hooks/useAuth';
+import { useGenerateDocx } from '@/hooks/useGenerateDocx';
 import { useGeneratePdf } from '@/hooks/useGeneratePdf';
 import { AppError, messageOf } from '@/services/api/errors';
 import { getQuotationByDraftId } from '@/services/quotation/quotation-service';
@@ -108,6 +109,7 @@ export default function QuotationPreviewPage() {
   const navigate = useNavigate();
   const scale = useFitScale();
   const pdf = useGeneratePdf();
+  const docx = useGenerateDocx();
 
   const token = state.status === 'authenticated' ? state.token : null;
 
@@ -265,14 +267,22 @@ export default function QuotationPreviewPage() {
                   signature.data === undefined ? null : base64PngToBytes(signature.data),
                 );
               }}
+              isSavingWord={docx.state.status === 'generating'}
+              onSaveWord={() => {
+                void docx.save(
+                  built.model,
+                  signature.data === undefined ? null : base64PngToBytes(signature.data),
+                );
+              }}
             />
           </div>
 
-          {pdf.state.status === 'error' ? (
+          {pdf.state.status === 'error' || docx.state.status === 'error' ? (
             <div className="print-hide">
               <Card>
                 <p role="alert" className="text-brand-red text-sm">
-                  {pdf.state.message}
+                  {pdf.state.status === 'error' ? pdf.state.message : ''}
+                  {docx.state.status === 'error' ? docx.state.message : ''}
                 </p>
               </Card>
             </div>
