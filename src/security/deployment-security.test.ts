@@ -181,19 +181,69 @@ describe('git history', () => {
       maxBuffer: 32 * 1024 * 1024,
     });
 
-    return [...new Set(output.split('\n').map((line) => line.trim()).filter(Boolean))];
+    return [
+      ...new Set(
+        output
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean),
+      ),
+    ];
   }
 
   it('has never contained a .env or a .clasp.json', () => {
-    // Not just the working tree: a secret committed once and deleted later is
-    // still in the history, and still needs rotating.
+    /*
+     * Not just the working tree: a secret committed once and deleted later is
+     * still in the history, and still needs rotating.
+     *
+     * `.example` is the project's convention for a committed template — it
+     * covers `.env.example`, `.env.production.example` and
+     * `.clasp.json.example`. The suffix is a naming convention and not by
+     * itself a guarantee, so the next test reads what is actually in them.
+     */
     const offenders = everyPathEverCommitted().filter(
       (path) =>
-        (/(^|\/)\.env($|\.)/.test(path) && !path.endsWith('.env.example')) ||
-        (/\.clasp\.json$/.test(path) && !path.endsWith('.example')),
+        (/(^|\/)\.env($|\.)/.test(path) || /\.clasp\.json$/.test(path)) &&
+        !path.endsWith('.example'),
     );
 
     expect(offenders).toEqual([]);
+  });
+
+  it('carries no value in any committed environment template', () => {
+    /*
+     * The check that gives the `.example` allowance its meaning. A template is
+     * only safe because it is EMPTY; one committed with a real endpoint or a
+     * real key is a leak wearing the right filename.
+     *
+     * PRD §34 and Phase 14 both require the production example to carry empty
+     * placeholders only.
+     */
+    const templates = everyPathEverCommitted().filter(
+      (path) => /(^|\/)\.env($|\.)/.test(path) && path.endsWith('.example'),
+    );
+
+    expect(templates.length).toBeGreaterThan(0);
+
+    for (const template of templates) {
+      const assignments = readFileSync(join(ROOT, template), 'utf8')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => /^[A-Z][A-Z0-9_]*=/.test(line));
+
+      expect(assignments.length, `${template} declares nothing`).toBeGreaterThan(0);
+
+      for (const assignment of assignments) {
+        const [name = '', value = ''] = assignment.split('=', 2);
+
+        // `VITE_APP_ENV=development` is the one legitimate exception: it names a
+        // mode, not a value, and a template that cannot say which mode it is
+        // for is a template somebody has to guess at.
+        if (name === 'VITE_APP_ENV') continue;
+
+        expect(value.trim(), `${template} sets ${name}`).toBe('');
+      }
+    }
   });
 
   it('ignores them going forward', () => {
