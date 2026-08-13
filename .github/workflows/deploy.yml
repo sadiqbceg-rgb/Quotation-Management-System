@@ -1,0 +1,184 @@
+name: Deploy
+
+# ---------------------------------------------------------------------------
+# MANUAL DISPATCH ONLY. THIS IS THE POINT OF THE FILE.
+# ---------------------------------------------------------------------------
+# There is deliberately no `push:` trigger. A merge to `main` must never reach
+# the company's live endpoint on its own: the quotation number is issued by the
+# backend and is immutable once issued, so a bad deploy that reaches production
+# unattended can burn real numbers out of the real counter, and no rollback
+# gives them back.
+#
+# So deploying is an act somebody performs, at a moment they chose, having read
+# DEPLOYMENT.md. This workflow makes that act repeatable — it does not make it
+# automatic.
+#
+# ---------------------------------------------------------------------------
+# WHAT IT DOES AND DOES NOT DO
+# ---------------------------------------------------------------------------
+# It builds and VERIFIES the frontend artefact, and publishes it to the static
+# host. It does NOT:
+#
+#   - deploy the Apps Script backend. `clasp` needs an OAuth refresh token with
+#     write access to the company's Drive and Sheets; putting one in a CI secret
+#     store means every workflow run, and every person who can edit a workflow
+#     file, holds the company's Google credentials. The backend is deployed by
+#     an operator from a workstation — DEPLOYMENT.md §2.
+#   - create Google resources, users, or data of any kind.
+#   - run against production without `environment: production` first passing
+#     whatever reviewers that GitHub environment requires.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Which deployment to publish to'
+        required: true
+        default: development
+        type: choice
+        options:
+          - development
+          - production
+      confirm:
+        description: 'Type DEPLOY to confirm. Anything else stops the run.'
+        required: true
+        type: string
+
+concurrency:
+  # One deploy at a time per target. Two overlapping publishes leave the host
+  # serving an index.html from one build and assets from another.
+  group: deploy-${{ inputs.target }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # GitHub Environments carry the endpoint variable and the host token, and
+    # `production` should be configured with required reviewers so a second
+    # person sees every production deploy. Configure that in
+    # Settings → Environments → production → Required reviewers.
+    environment: ${{ inputs.target }}
+
+    steps:
+      - name: Refuse an unconfirmed run
+        if: inputs.confirm != 'DEPLOY'
+        run: |
+          echo "::error::Confirmation not given. Re-run and type DEPLOY."
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          # `deployment-security.test.ts` walks the full history looking for a
+          # committed .env or .clasp.json. A shallow clone would let one hide.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The letterhead, the keyed seal and the logo, generated from reference/.
+      # Nothing downstream can run without them.
+      - name: Prepare assets
+        run: npm run assets
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit and integration tests, with coverage gates
+        run: npm run test:coverage
+
+      - name: Build
+        run: npm run build
+        env:
+          # Set per GitHub Environment: Settings → Environments → <target> →
+          # Environment variables. NOT a repository secret and not committed —
+          # it is public by nature but environment-specific, and the whole risk
+          # here is a production build carrying the development endpoint.
+          VITE_GAS_ENDPOINT: ${{ vars.VITE_GAS_ENDPOINT }}
+          VITE_APP_ENV: ${{ inputs.target }}
+
+      # The gate. Fails the run if `dist/` carries a Script Property name,
+      # anything credential-shaped, a development marker, a source map, an
+      # unhashed asset, or an endpoint that is not a real Apps Script one.
+      #
+      # It runs on the artefact that is about to be published — not on a
+      # rebuild, and not on a developer's machine.
+      - name: Verify the artefact
+        run: npm run verify:build
+
+      - name: Refuse to publish without an endpoint
+        run: |
+          if [ -z "${{ vars.VITE_GAS_ENDPOINT }}" ]; then
+            echo "::error::VITE_GAS_ENDPOINT is not set for the '${{ inputs.target }}' environment."
+            echo "::error::The build would ship with no backend. Set it in Settings → Environments."
+            exit 1
+          fi
+
+      - name: Upload the verified artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ inputs.target }}-${{ github.sha }}
+          path: dist/
+          retention-days: 14
+
+  publish:
+    name: Publish to the static host
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ inputs.target }}
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ inputs.target }}-${{ github.sha }}
+          path: dist
+
+      # -------------------------------------------------------------------
+      # THE HOST STEP IS COMMENTED OUT UNTIL A HOST IS CHOSEN.
+      # -------------------------------------------------------------------
+      # Phase 14 produces deployment-ready artefacts; choosing the host and
+      # creating its token are the operator's decisions (DEPLOYMENT.md §1.4).
+      # Uncomment ONE block, and add the token to
+      # Settings → Environments → <target> → Environment secrets.
+      #
+      # Netlify:
+      #   - name: Publish
+      #     run: npx netlify-cli@17 deploy --dir=dist --prod --message "${{ github.sha }}"
+      #     env:
+      #       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      #       NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      #
+      # Cloudflare Pages:
+      #   - name: Publish
+      #     uses: cloudflare/wrangler-action@v3
+      #     with:
+      #       apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      #       accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      #       command: pages deploy dist --project-name=speed-falcon-quotations
+      #
+      # Vercel:
+      #   - name: Publish
+      #     run: npx vercel@latest deploy --prebuilt --prod --token "${{ secrets.VERCEL_TOKEN }}"
+      #     env:
+      #       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      #       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: No host configured
+        run: |
+          echo "::notice::Built and verified dist for '${{ inputs.target }}'. No host step is enabled."
+          echo "::notice::Enable one in .github/workflows/deploy.yml, or download the artefact and"
+          echo "::notice::publish it by hand. Then run the checklist in"
+          echo "::notice::quotation-implementation-plan/DEPLOYMENT_CHECKLIST.md."

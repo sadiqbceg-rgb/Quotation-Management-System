@@ -19,6 +19,10 @@ export const ACTION_NAMES = [
   'auth.me',
   'admin.createUser',
 
+  // Phase 14 — Admin-only deployment diagnostics: configuration completeness
+  // plus Drive and Sheets reachability. Names and booleans only.
+  'admin.diagnostics',
+
   // Phase 03
   'quotation.reserveNumber',
   'quotation.save',

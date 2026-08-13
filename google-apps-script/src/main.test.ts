@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installGasFakes, type GasEnvironment } from './__fixtures__/gas-fakes';
-import { ACTIONS, handlePost } from './main';
+import { ACTIONS, dailyBackup, doGet, handlePost } from './main';
 import {
   BOOTSTRAP_EMAIL_PROPERTY,
   BOOTSTRAP_PASSWORD_PROPERTY,
@@ -128,6 +128,111 @@ describe('health', () => {
     const data = call('health').data as { configured: boolean; missing: string[] };
     expect(data.configured).toBe(false);
     expect(data.missing).toContain('SESSION_HMAC_SECRET');
+  });
+
+  it('runs no Drive or Sheets probe for an anonymous caller', () => {
+    /*
+     * `health` is reachable by anyone who has the URL. Each probe is a real
+     * Drive or Sheets round trip, so a public endpoint that performs them on
+     * demand is a free way to spend the deployment's daily quota.
+     */
+    expect((call('health').data as { probes?: unknown }).probes).toBeUndefined();
+  });
+});
+
+describe('admin.diagnostics', () => {
+  beforeEach(() => {
+    seedUser('user@speedxksa.com', 'User');
+    seedUser('admin@speedxksa.com', 'Admin');
+  });
+
+  it('is refused to a signed-in User', () => {
+    // It reports the whole configuration surface. Signed in is not sufficient.
+    expect(call('admin.diagnostics', {}, loginAs('user@speedxksa.com')).error?.code).toBe(
+      'FORBIDDEN',
+    );
+  });
+
+  it('gives an Admin the configuration by name, and the probes', () => {
+    const response = call('admin.diagnostics', {}, loginAs('admin@speedxksa.com'));
+    expect(response.ok).toBe(true);
+
+    const data = response.data as {
+      probes?: { drive: string; sheets: string };
+      configuration: { required: Array<{ name: string; set: boolean }> };
+    };
+
+    // Probes ARE run here — the caller is authenticated, so the quota spend is
+    // attributable and bounded by the rate limiter.
+    expect(data.probes).toEqual({ drive: 'ok', sheets: 'ok' });
+    expect(data.configuration.required.map((entry) => entry.name)).toContain('SESSION_HMAC_SECRET');
+    expect(data.configuration.required.every((entry) => entry.set)).toBe(true);
+  });
+
+  it('discloses no property value, to anyone, ever', () => {
+    const serialised = JSON.stringify(
+      call('admin.diagnostics', {}, loginAs('admin@speedxksa.com')),
+    );
+
+    for (const value of env.properties.values.values()) {
+      if (value.trim().length === 0) continue;
+      expect(serialised.includes(value), `leaked "${value}"`).toBe(false);
+    }
+  });
+
+  it('is not reachable as a GET, which is the liveness probe only', () => {
+    // `doGet` answers with the anonymous health payload and nothing more. A
+    // diagnostics report served over GET would be readable from a browser
+    // address bar by anyone with the URL.
+    const body = JSON.parse(doGet().getContent()) as { data: { configuration?: unknown } };
+    expect(body.data.configuration).toBeUndefined();
+  });
+});
+
+describe('the daily backup entry point', () => {
+  it('logs a failure rather than throwing into the trigger', () => {
+    /*
+     * A trigger that throws emails the project owner and disables itself. That
+     * is the right response to something an operator must act on, and the wrong
+     * one for a Drive hiccup at 02:00 — so the outcome is logged and read in
+     * the weekly review instead.
+     */
+    env.properties.values.delete('TRACKING_SPREADSHEET_ID');
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    expect(() => {
+      dailyBackup();
+    }).not.toThrow();
+    expect(logged.mock.calls.map(String).join('\n')).toContain('FAILED');
+
+    logged.mockRestore();
+  });
+
+  it('logs the outcome of a successful run', () => {
+    /*
+     * The backup copies a real Drive FILE, so the tracking spreadsheet has to
+     * exist in the fake Drive rather than merely being named by a property —
+     * which is also true of the live deployment, and is the difference between
+     * `copied` and `failed`.
+     */
+    const root = env.drive.service as { getFolderById: (id: string) => unknown };
+    const file = (
+      root.getFolderById('test-only-drive-root') as {
+        createFile: (blob: unknown) => { getId: () => string };
+      }
+    ).createFile({
+      getBytes: () => [1, 2, 3],
+      getName: () => 'Quotation Tracking',
+      getContentType: () => 'application/vnd.google-apps.spreadsheet',
+    });
+    env.properties.values.set('TRACKING_SPREADSHEET_ID', file.getId());
+
+    const logged = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+
+    dailyBackup();
+
+    expect(logged.mock.calls.map(String).join('\n')).toContain('copied');
+    logged.mockRestore();
   });
 });
 

@@ -60,6 +60,9 @@ export const AUDITED_ACTIONS: readonly string[] = [
 /** Actions that only read. They must NOT write an audit entry. */
 export const READ_ONLY_ACTIONS: readonly string[] = [
   'health',
+  // Reads configuration state and probes Drive and Sheets. Changes nothing,
+  // and reports names and booleans only — never a value (§19.7).
+  'admin.diagnostics',
   'auth.me',
   'quotation.get',
   'quotation.list',

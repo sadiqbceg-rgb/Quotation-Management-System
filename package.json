@@ -21,7 +21,10 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "gas:build": "node google-apps-script/esbuild.config.mjs",
-    "gas:push": "npm run gas:build && clasp push"
+    "gas:push": "npm run gas:build && clasp push",
+    "verify:build": "node scripts/verify-build.ts",
+    "secrets:generate": "node scripts/generate-secrets.ts",
+    "deploy:check": "npm run build && npm run verify:build"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.7.1",

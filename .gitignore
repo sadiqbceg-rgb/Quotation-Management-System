@@ -11,10 +11,11 @@ coverage/
 src/assets/generated/*
 !src/assets/generated/.gitkeep
 
-# environment — never commit anything but the example
+# environment — never commit anything but the examples
 .env
 .env.*
 !.env.example
+!.env.production.example
 
 # Google Apps Script — .clasp.json holds the live script id
 .clasp.json

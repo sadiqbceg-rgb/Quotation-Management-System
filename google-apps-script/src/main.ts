@@ -26,8 +26,10 @@
 
 import * as auth from './auth/handlers';
 import { isTokenRevoked } from './auth/session';
+import { runDailyBackup } from './backup/daily-backup';
 import { nowSeconds, shouldRenew, issueToken, verifyToken } from './auth/token';
-import { isFullyConfigured, missingProperties, requireProperty } from './config/properties';
+import { requireProperty } from './config/properties';
+import { configurationReport, healthPayload, API_VERSION } from './monitoring/health';
 import * as items from './items/handlers';
 import * as persons from './persons/handlers';
 import * as quotation from './quotation/handlers';
@@ -37,7 +39,14 @@ import { checkRequestLimits, rateLimitError } from './security/rate-limiter';
 import { parseRequestBody } from './security/sanitize';
 import * as users from './sheets/users-repository';
 
-export const API_VERSION = '0.6.0';
+/*
+ * Re-exported so callers keep importing it from the router.
+ *
+ * It LIVES in `monitoring/health.ts`, which is the module that reports it —
+ * one home for the number, rather than a constant here and a copy there that
+ * drift apart the first time somebody bumps only one.
+ */
+export { API_VERSION };
 
 /* -------------------------------------------------------------------------- */
 /* Envelope                                                                   */
@@ -104,6 +113,26 @@ export const ACTIONS: Record<string, ActionDefinition> = {
   'admin.createUser': {
     access: 'Admin',
     handler: auth.createUser,
+  },
+
+  /*
+   * Deployment diagnostics — Admin only, and deliberately separate from
+   * `health`.
+   *
+   * `health` is public, because a deployment too broken to issue a token still
+   * has to be diagnosable remotely — so it must stay cheap. The reachability
+   * probes cost a real Drive call and a real Sheets call each, and an anonymous
+   * caller must not be able to make the deployment spend quota by asking
+   * repeatedly. So they live here, behind the strongest access level.
+   *
+   * Used by RUNBOOK.md's setup verification and by the deployment checklist.
+   */
+  'admin.diagnostics': {
+    access: 'Admin',
+    handler: () => ({
+      ...healthPayload({ includeProbes: true }),
+      configuration: configurationReport(),
+    }),
   },
 
   'quotation.reserveNumber': {
@@ -215,17 +244,6 @@ export const ACTIONS: Record<string, ActionDefinition> = {
     handler: persons.uploadSignature,
   },
 };
-
-function healthPayload(): Record<string, unknown> {
-  return {
-    status: 'ok',
-    configured: isFullyConfigured(),
-    // Names only — never values (§19.7).
-    missing: missingProperties(),
-    version: API_VERSION,
-    serverTime: new Date().toISOString(),
-  };
-}
 
 /* -------------------------------------------------------------------------- */
 /* Caller resolution                                                          */
@@ -434,3 +452,26 @@ export function doGet(): GoogleAppsScript.Content.TextOutput {
  */
 export { provisionFirstAdmin, runProvisioning } from './auth/provisioning';
 export { measurePasswordHashCost } from './auth/password';
+export { installDailyBackupTrigger, removeDailyBackupTrigger } from './backup/daily-backup';
+
+/**
+ * The daily backup, called by the time-driven trigger.
+ *
+ * Deliberately swallows nothing and throws nothing: `runDailyBackup` returns a
+ * typed result and this logs it. A trigger that throws emails the owner and
+ * disables itself, which is the wrong response to a Drive hiccup at 02:00.
+ * `RUNBOOK.md` §"Weekly review" says where to read this back.
+ */
+export function dailyBackup(): void {
+  const result = runDailyBackup();
+
+  if (result.outcome === 'failed') {
+    console.error(`[backup] ${result.folderName}: FAILED — ${result.message ?? 'no detail'}`);
+    return;
+  }
+
+  console.info(
+    `[backup] ${result.folderName}: ${result.outcome}` +
+      (result.pruned.length > 0 ? `, pruned ${result.pruned.join(', ')}` : ''),
+  );
+}

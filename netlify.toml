@@ -1,0 +1,74 @@
+# Netlify configuration.
+#
+# Cloudflare Pages reads `public/_headers` and `public/_redirects` and needs no
+# file of its own; Vercel reads `vercel.json`. All three describe the SAME
+# policy, and `public/_headers` is the single source for the security headers —
+# it is copied verbatim into `dist/` by Vite, so Netlify and Cloudflare both
+# read the same bytes. Only Vercel needs them restated, which is why
+# `vercel.json` carries a warning to keep the two in step.
+#
+# ---------------------------------------------------------------------------
+# WHAT MUST BE SET IN THE NETLIFY UI, NOT HERE
+# ---------------------------------------------------------------------------
+# `VITE_GAS_ENDPOINT` is a BUILD-TIME variable: Vite inlines it into the bundle,
+# so it must exist in Netlify's environment before the build runs. It is set in
+# Site settings → Environment variables, per deploy context, and never in this
+# file — a committed endpoint is an endpoint that follows a fork.
+#
+# It is not a secret (the boundary is the session token, see DEPLOYMENT.md), but
+# it IS environment-specific, and a production build carrying the development
+# endpoint issues the company's quotations into the wrong spreadsheet.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Match the `engines` field in package.json. A different major version of Node
+  # is the usual cause of "it builds locally and not on the host".
+  NODE_VERSION = "22"
+
+# ---------------------------------------------------------------------------
+# SPA fallback
+# ---------------------------------------------------------------------------
+# React Router owns the URL space. Without this, a reload on /quotations/new —
+# or any link a user pastes to a colleague — is a 404 from the host, because no
+# such file exists in `dist/`.
+#
+# 200, not 301: the browser must keep the requested path so the router can read
+# it. A redirect would send every deep link to `/`.
+#
+# `force = false` (the default) means a real file always wins, so this can never
+# shadow an asset.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# ---------------------------------------------------------------------------
+# Caching
+# ---------------------------------------------------------------------------
+# ORDER MATTERS: a later rule overrides an earlier one for the same header, so
+# the broad default is stated first and the immutable /assets/ rule last. Swap
+# them and every hashed asset is re-fetched on every page load.
+#
+# The default is no-cache, and it is deliberately the DEFAULT rather than a
+# rule on `/index.html`. The SPA fallback serves index.html's content at every
+# unmatched path, so a rule matched on the literal path `/index.html` would not
+# cover `/quotations/new` — which is precisely the URL a user reloads.
+#
+# A stale index.html points at a hashed bundle that no longer exists, and the
+# user gets a blank page that only a hard refresh fixes.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Everything Vite emits goes into /assets/ with a content hash in its filename —
+# the JavaScript, the CSS, the Carlito fonts, the letterhead PDF, the keyed seal
+# — so the bytes behind a given URL never change and a year-long immutable cache
+# is safe. `verify-build` fails the build if anything there is unhashed.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

@@ -314,6 +314,9 @@ export function createSpreadsheetFake(): SpreadsheetFake {
   }
 
   const spreadsheet = {
+    /** Real spreadsheets have one; the health probe calls it to prove reach. */
+    getName: (): string => 'TEST_ONLY Quotation Tracking',
+    getId: (): string => 'test-only-spreadsheet',
     getSheetByName: (name: string): unknown =>
       sheets.has(name) ? buildSheet(sheets.get(name)!) : null,
     insertSheet: (name: string): unknown => {
@@ -447,6 +450,8 @@ export interface DriveFileFake {
   mimeType: string;
   bytes: number[];
   folderId: string;
+  /** Set by `setTrashed`. Drive keeps a trashed item for 30 days. */
+  trashed?: boolean;
 }
 
 export interface DriveFake {
@@ -486,6 +491,7 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
     id: string;
     name: string;
     parentId: string | null;
+    trashed?: boolean;
   }
 
   const folders = new Map<string, FolderNode>([[rootId, { id: rootId, name: '', parentId: null }]]);
@@ -522,6 +528,22 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
       getId: (): string => file.id,
       getName: (): string => file.name,
       getUrl: (): string => `https://drive.google.com/file/d/${file.id}/view`,
+      /** Drive's own copy, used by the daily spreadsheet backup. */
+      makeCopy: (name: string, target: { getId: () => string }): unknown => {
+        const copy: DriveFileFake = {
+          id: nextId('file'),
+          name,
+          mimeType: file.mimeType,
+          bytes: [...file.bytes],
+          folderId: target.getId(),
+        };
+        files.set(copy.id, copy);
+        return buildFile(copy);
+      },
+      setTrashed: (trashed: boolean): void => {
+        file.trashed = trashed;
+      },
+      isTrashed: (): boolean => file.trashed === true,
       getBlob: () => ({
         getBytes: (): number[] => file.bytes,
         getName: (): string => file.name,
@@ -551,9 +573,32 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
       getName: (): string => node.name,
       getUrl: (): string => `https://drive.google.com/drive/folders/${node.id}`,
 
+      /** Every child folder, for the backup prune. Trashed ones are gone. */
+      getFolders: () => {
+        const children = [...folders.values()].filter(
+          (entry) => entry.parentId === node.id && entry.trashed !== true,
+        );
+        let index = 0;
+        return {
+          hasNext: (): boolean => index < children.length,
+          next: (): unknown => {
+            const match = children[index];
+            index += 1;
+            if (match === undefined) throw new Error('No such folder.');
+            return buildFolder(match);
+          },
+        };
+      },
+
+      setTrashed: (trashed: boolean): void => {
+        node.trashed = trashed;
+      },
+
+      isTrashed: (): boolean => node.trashed === true,
+
       getFoldersByName: (name: string) => {
         const matches = [...folders.values()].filter(
-          (entry) => entry.parentId === node.id && entry.name === name,
+          (entry) => entry.parentId === node.id && entry.name === name && entry.trashed !== true,
         );
         let index = 0;
         return {
@@ -676,7 +721,9 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
     folderPath: pathOf,
     filesIn: (path: string) => [...files.values()].filter((file) => pathOf(file.folderId) === path),
     folderPaths: () =>
-      [...folders.values()].filter((node) => node.parentId !== null).map((node) => pathOf(node.id)),
+      [...folders.values()]
+        .filter((node) => node.parentId !== null && node.trashed !== true)
+        .map((node) => pathOf(node.id)),
     sharingCalls: () => [...sharing],
     failNextCreate: (message: string) => {
       pendingFailure = message;
@@ -695,6 +742,75 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
 }
 
 /* -------------------------------------------------------------------------- */
+/* ScriptApp                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export interface TriggerFake {
+  handler: string;
+  hour: number | null;
+  everyDays: number | null;
+}
+
+export interface ScriptAppFake {
+  service: unknown;
+  /** Every installed trigger, for asserting the install is idempotent. */
+  triggers: () => TriggerFake[];
+}
+
+/**
+ * A minimal trigger registry.
+ *
+ * Apps Script will happily install the same trigger five times if asked five
+ * times, and then run it five times a night — so the fake does NOT deduplicate.
+ * Making it forgiving would hide exactly the bug the install guard prevents.
+ */
+export function createScriptAppFake(): ScriptAppFake {
+  const installed: TriggerFake[] = [];
+
+  function triggerHandle(trigger: TriggerFake) {
+    return {
+      getHandlerFunction: (): string => trigger.handler,
+      getUniqueId: (): string => `trigger-${trigger.handler}-${String(installed.indexOf(trigger))}`,
+    };
+  }
+
+  return {
+    service: {
+      getProjectTriggers: (): unknown[] => installed.map(triggerHandle),
+
+      newTrigger: (handler: string) => {
+        const trigger: TriggerFake = { handler, hour: null, everyDays: null };
+
+        const clockBuilder = {
+          atHour: (hour: number) => {
+            trigger.hour = hour;
+            return clockBuilder;
+          },
+          everyDays: (days: number) => {
+            trigger.everyDays = days;
+            return clockBuilder;
+          },
+          create: (): unknown => {
+            installed.push(trigger);
+            return triggerHandle(trigger);
+          },
+        };
+
+        return { timeBased: () => clockBuilder };
+      },
+
+      deleteTrigger: (handle: { getHandlerFunction: () => string }): void => {
+        const index = installed.findIndex(
+          (trigger) => trigger.handler === handle.getHandlerFunction(),
+        );
+        if (index >= 0) installed.splice(index, 1);
+      },
+    },
+    triggers: () => [...installed],
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Installation                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -704,6 +820,7 @@ export interface GasEnvironment {
   spreadsheet: SpreadsheetFake;
   lock: LockFake;
   drive: DriveFake;
+  scriptApp: ScriptAppFake;
 }
 
 /**
@@ -727,8 +844,10 @@ export function installGasFakes(
   const spreadsheetFake = createSpreadsheetFake();
   const lockFake = createLockFake();
   const driveFake = createDriveFake(propertiesFake.get('DRIVE_ROOT_FOLDER_ID'));
+  const scriptAppFake = createScriptAppFake();
 
   stub('Utilities', createUtilitiesFakeWithBlobDecode());
+  stub('ScriptApp', scriptAppFake.service);
   stub('DriveApp', driveFake.service);
   // The Advanced Drive Service, declared in appsscript.json. Only content
   // replacement uses it; everything else goes through DriveApp.
@@ -784,5 +903,6 @@ export function installGasFakes(
     spreadsheet: spreadsheetFake,
     lock: lockFake,
     drive: driveFake,
+    scriptApp: scriptAppFake,
   };
 }

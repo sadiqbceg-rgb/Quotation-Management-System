@@ -46,6 +46,12 @@ await build({
       '// Operator-only, run from the Apps Script editor. Not reachable over HTTP.',
       'function runProvisioning() { return __app.runProvisioning(); }',
       'function measurePasswordHashCost(iterations) { return __app.measurePasswordHashCost(iterations); }',
+      'function installDailyBackupTrigger() { return __app.installDailyBackupTrigger(); }',
+      'function removeDailyBackupTrigger() { return __app.removeDailyBackupTrigger(); }',
+      '',
+      '// Called by the time-driven trigger. The NAME must match',
+      '// BACKUP_TRIGGER_FUNCTION in google-apps-script/src/backup/daily-backup.ts.',
+      'function dailyBackup() { return __app.dailyBackup(); }',
     ].join('\n'),
   },
 });

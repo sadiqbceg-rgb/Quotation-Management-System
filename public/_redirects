@@ -1,0 +1,16 @@
+# SPA fallback.
+#
+# React Router owns the URL space. Without this, a reload on `/quotations/new`
+# — or any link a user pastes to a colleague — is a 404 from the host, because
+# no such file exists in `dist/`.
+#
+# Read by Cloudflare Pages and by Netlify. `netlify.toml` states the same rule
+# for Netlify; Vercel uses the `rewrites` block in `vercel.json`. All three say
+# the same thing, and this file is the one Cloudflare Pages has.
+#
+# Status 200, not 301: the browser must KEEP the requested path so the router
+# can read it. A redirect would send every deep link to `/`.
+#
+# A real file always wins over this rule, so it can never shadow an asset.
+
+/*    /index.html    200

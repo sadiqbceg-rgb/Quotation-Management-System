@@ -7,7 +7,18 @@ import jsxA11y from 'eslint-plugin-jsx-a11y';
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'dist-gas', 'coverage', 'node_modules', 'src/assets/generated'],
+    ignores: [
+      'dist',
+      'dist-gas',
+      'coverage',
+      'node_modules',
+      'src/assets/generated',
+      // Whatever a test wrote — generated PDFs, DOCXs, and the synthetic
+      // `dist/` directories `verify-build.test.ts` builds. Git-ignored, and
+      // deliberately not written to a lint standard: a fixture that has to
+      // satisfy `no-unused-vars` is a fixture that cannot represent a bundle.
+      '.test-output',
+    ],
   },
 
   js.configs.recommended,

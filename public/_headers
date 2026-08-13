@@ -32,6 +32,36 @@
 # and the rendered letterhead preview. Generated PDFs and Word files are handed
 # to the browser as blob downloads.
 #
+# ---------------------------------------------------------------------------
+# THIS POLICY EXISTS TWICE. CHANGE BOTH.
+# ---------------------------------------------------------------------------
+# Netlify and Cloudflare Pages read THIS file, which Vite copies verbatim into
+# `dist/`. Vercel does not read it at all, so `vercel.json` restates every
+# header below. `vercel.json` cannot carry comments — Vercel's schema rejects
+# unknown keys — which is why the warning lives here, at the source of truth.
+#
+# A value changed here and not there means a Vercel deployment quietly runs a
+# weaker policy than the one that was reviewed.
+#
+# ---------------------------------------------------------------------------
+# ORDERING
+# ---------------------------------------------------------------------------
+# When two rules match one request, the later rule wins for a header both set.
+# So the broad no-cache default comes first and `/assets/*` last. Swapped, every
+# hashed asset would be re-fetched on every page load.
+#
+# ---------------------------------------------------------------------------
+# WHY Cache-Control IS ON `/*` AND NOT ON `/index.html`
+# ---------------------------------------------------------------------------
+# index.html must never be cached: it names the current hashed bundle, and a
+# stale copy points at one that no longer exists — a blank page that only a hard
+# refresh fixes.
+#
+# It is the DEFAULT rather than a rule on `/index.html` because the SPA fallback
+# serves index.html's content at every unmatched path. `/quotations/new` is the
+# URL a user actually reloads, and a rule matched on the literal path would not
+# cover it.
+#
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://script.google.com https://script.googleusercontent.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
   Strict-Transport-Security: max-age=31536000; includeSubDomains
@@ -39,3 +69,11 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   X-Frame-Options: DENY
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Everything Vite emits lands here with a content hash in its filename — the
+# JavaScript, the CSS, the Carlito fonts, the letterhead PDF, the keyed seal.
+# The bytes behind one of these URLs never change, so the immutable cache is
+# safe. `npm run verify:build` fails the build if anything here is unhashed.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
