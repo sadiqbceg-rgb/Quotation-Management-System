@@ -120,6 +120,43 @@ export default tseslint.config(
     },
   },
 
+  /*
+   * The SPA never touches a Google API directly.
+   *
+   * All Drive and Sheets access runs inside Apps Script, as the deploying
+   * account (PRD §33.3, §19.3). The browser has no Google credential and must
+   * never acquire one — everything goes through `services/api/client.ts`.
+   *
+   * This used to be guaranteed by the Apps Script types simply not being in
+   * scope for `src/`. They are now, because the integration tests drive the
+   * real backend handlers (see tsconfig.json), so the rule is stated here where
+   * it fails with a reason instead of a "cannot find name".
+   */
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/__tests__/**'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        ...[
+          'DriveApp',
+          'SpreadsheetApp',
+          'LockService',
+          'CacheService',
+          'PropertiesService',
+          'ContentService',
+          'Utilities',
+          'Drive',
+          'Session',
+          'ScriptApp',
+        ].map((name) => ({
+          name,
+          message: `${name} is an Apps Script API. The browser has no Google credential — call the backend through services/api/client.ts (§19.3).`,
+        })),
+      ],
+    },
+  },
+
   /* ------------------------------------------------------- Google Apps Script */
   {
     files: ['google-apps-script/**/*.ts'],
@@ -169,12 +206,45 @@ export default tseslint.config(
 
   /* ------------------------------------------------------------------- tests */
   {
-    files: ['**/*.test.{ts,tsx}', '**/__fixtures__/**/*.{ts,tsx}', 'vitest.setup.ts'],
+    files: [
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.ts',
+      '**/__fixtures__/**/*.{ts,tsx}',
+      'test/**/*.{ts,tsx}',
+      'vitest.setup.ts',
+    ],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
     rules: {
       'no-restricted-imports': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
+
+      /*
+       * No focused and no disabled tests, anywhere (§Lint Requirements, Phase 13).
+       *
+       * `.only` silently reduces the suite to one test while still reporting
+       * green, and `.skip` leaves a requirement uncovered with nothing to show
+       * for it. Both are the kind of thing that gets committed at 6pm and found
+       * six weeks later, so they are an error rather than a convention.
+       */
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "MemberExpression[object.name=/^(describe|it|test|suite|bench)$/][property.name='only']",
+          message: 'A focused test hides the rest of the suite. Remove .only before committing.',
+        },
+        {
+          selector:
+            "MemberExpression[object.name=/^(describe|it|test|suite|bench)$/][property.name=/^(skip|todo|fails)$/]",
+          message:
+            'A disabled test covers nothing. Fix it, delete it, or gate it on a runtime condition with .skipIf.',
+        },
+        {
+          selector: "CallExpression[callee.name='fdescribe'], CallExpression[callee.name='fit']",
+          message: 'A focused test hides the rest of the suite.',
+        },
+      ],
     },
   },
 

@@ -5,7 +5,27 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
+    /*
+     * `google-apps-script` is here for the INTEGRATION TESTS only.
+     *
+     * `src/__tests__/integration/` drives the real backend handlers against the
+     * in-memory fakes, which pulls `google-apps-script/src/**` into this
+     * program even though the folder is excluded as a root. Without the types,
+     * every `LockService` and `GoogleAppsScript.…` in those files is an error
+     * here.
+     *
+     * It does mean the Apps Script globals are nominally in scope for frontend
+     * source too. That guarantee — the SPA never touches a Google API directly
+     * (§19.3, PRD §33.3) — is enforced by the `no-restricted-globals` rule on
+     * `src/**` in eslint.config.js instead of by their absence, which is a
+     * better place for it: it now fails with a message that says why.
+     */
+    "types": [
+      "vite/client",
+      "vitest/globals",
+      "@testing-library/jest-dom",
+      "google-apps-script"
+    ],
     "skipLibCheck": true,
 
     "allowImportingTsExtensions": false,
@@ -32,6 +52,15 @@
       "@shared/*": ["shared/*"]
     }
   },
-  "include": ["src", "shared", "e2e", "vite.config.ts", "vitest.setup.ts", "playwright.config.ts"],
+  "include": [
+    "src",
+    "shared",
+    "e2e",
+    "test",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "vitest.setup.ts",
+    "playwright.config.ts"
+  ],
   "exclude": ["node_modules", "dist", "dist-gas", "google-apps-script"]
 }

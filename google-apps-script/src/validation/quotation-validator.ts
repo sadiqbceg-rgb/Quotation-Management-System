@@ -264,6 +264,16 @@ function validateLines(
       fields[`lines.${String(index)}.description`] = 'The description is too long.';
       return;
     }
+    /*
+     * PRD §36 lists Unit among the required fields, and the printed table has a
+     * Unit column on every row. Without this a finalized quotation could be
+     * issued with a blank Unit — the number spent, the document generated, and
+     * the gap only noticed by the client reading it.
+     */
+    if (options.requireComplete && !isWithinLength(unit, TEXT_LIMITS.unit)) {
+      fields[`lines.${String(index)}.unit`] = 'A unit is required.';
+      return;
+    }
     if (unit.length > TEXT_LIMITS.unit.max) {
       fields[`lines.${String(index)}.unit`] = 'The unit is too long.';
       return;
@@ -294,6 +304,21 @@ function validateDate(value: string, fields: Fields): void {
 
   const parsed = new Date(`${value}T00:00:00Z`).getTime();
   if (Number.isNaN(parsed)) {
+    fields['quotationDate'] = 'Enter a valid date.';
+    return;
+  }
+
+  /*
+   * Reject a date that only LOOKS valid.
+   *
+   * `new Date('2026-02-31T00:00:00Z')` does not fail — it rolls over to 3 March
+   * and reports a perfectly good timestamp. The pattern check above passes it
+   * too, since the shape is right. Left alone, a typo of 31 February is
+   * accepted, printed on the document as 31-02-2026, and filed in the March
+   * folder, because the archive path comes from the date. Round-tripping the
+   * parsed value is the only way to see the rollover.
+   */
+  if (new Date(parsed).toISOString().slice(0, 10) !== value) {
     fields['quotationDate'] = 'Enter a valid date.';
     return;
   }

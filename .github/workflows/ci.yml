@@ -1,0 +1,128 @@
+name: CI
+
+# Every push to the working branch, and every pull request into main.
+#
+# The jobs are the same five gates a developer runs locally, in the same order,
+# so "it passed on my machine" and "it passed in CI" mean the same thing.
+#
+# NO SECRET IS USED, AND NONE IS NEEDED.
+#
+# The E2E suite runs the real Apps Script router in-process behind an
+# intercepted fetch (`e2e/support/backend.ts`), so there is no deployment to
+# point at, no spreadsheet to read and no Drive to write to. That is deliberate:
+# a CI job that needs production credentials is a CI job that can damage
+# production. See Phase 13, Security Requirements.
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  pull_request:
+    branches:
+      - main
+
+# A new push supersedes a run in progress on the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The endpoint the E2E dev server is built against. Not a deployment: every
+  # request to it is intercepted in the browser. Never point this at production.
+  VITE_GAS_ENDPOINT: https://script.google.com/macros/s/TEST_ONLY-e2e-deployment/exec
+  VITE_APP_ENV: development
+
+jobs:
+  verify:
+    name: Typecheck, lint, build, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # `deployment-security.test.ts` walks the FULL history looking for a
+          # committed .env or .clasp.json. A shallow clone would let one hide.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Generated from `reference/` — the letterhead, the keyed seal, the logo.
+      # Nothing downstream can run without them.
+      - name: Prepare assets
+        run: npm run assets
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # Before the tests: `deployment-security.test.ts` reads `dist/` and skips
+      # loudly rather than passing quietly when it is absent.
+      - name: Build
+        run: npm run build
+
+      - name: Build the Apps Script bundle
+        run: npm run gas:build
+
+      - name: Unit and integration tests, with coverage gates
+        run: npm run test:coverage
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  e2e:
+    name: End-to-end (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Prepare assets
+        run: npm run assets
+
+      # The repo pins the pre-installed Chromium by path for the sandbox it is
+      # developed in; a GitHub runner has no such browser, so install the one
+      # Playwright expects and let the config's env override point at it.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+        env:
+          # Overrides the local default in playwright.config.ts.
+          PLAYWRIGHT_CHROMIUM: ''
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

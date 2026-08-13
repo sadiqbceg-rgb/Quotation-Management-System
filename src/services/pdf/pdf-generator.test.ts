@@ -32,10 +32,21 @@ async function generate(model = TEST_ONLY_model(), assetOverrides = {}) {
 let short: { bytes: Uint8Array; pageCount: number; filename: string };
 let shortPages: ParsedPage[];
 
+/**
+ * The 60-row document, generated once.
+ *
+ * Three of the pagination tests below asked for the same default long model and
+ * each built its own — the same bytes, three times, and by some way the most
+ * expensive thing in this file. Sharing it changes nothing about what they
+ * assert; a test that needs a DIFFERENT length still generates its own.
+ */
+let longPages: ParsedPage[];
+
 beforeAll(async () => {
   short = await generate();
   shortPages = await TEST_ONLY_parsePdf(short.bytes);
-}, 60_000);
+  longPages = await TEST_ONLY_parsePdf((await generate(TEST_ONLY_longModel())).bytes);
+}, 90_000);
 
 /* -------------------------------------------------------------------------- */
 
@@ -94,8 +105,8 @@ describe('the text is real, not a picture of text', () => {
 });
 
 describe('the letterhead is on every page', () => {
-  it('carries the header and footer text of the company artwork', async () => {
-    const pages = await TEST_ONLY_parsePdf((await generate(TEST_ONLY_longModel())).bytes);
+  it('carries the header and footer text of the company artwork', () => {
+    const pages = longPages;
     expect(pages.length).toBeGreaterThan(1);
 
     for (const page of pages) {
@@ -147,8 +158,8 @@ describe('body content stays inside the measured box', () => {
 });
 
 describe('pagination', () => {
-  it('spans pages for a 60-row quotation and repeats the table header', async () => {
-    const pages = await TEST_ONLY_parsePdf((await generate(TEST_ONLY_longModel())).bytes);
+  it('spans pages for a 60-row quotation and repeats the table header', () => {
+    const pages = longPages;
     expect(pages.length).toBeGreaterThan(1);
 
     // PRD §27: a continuation page's rows are never unlabelled.
@@ -183,8 +194,17 @@ describe('pagination', () => {
   }, 60_000);
 
   it('refuses a document that cannot be laid out, naming the problem', async () => {
+    /*
+     * A single term far taller than a page, so it can never be placed.
+     *
+     * 12,000 characters is already several pages of body text — comfortably
+     * past the threshold, and the same code path as a longer one. It was
+     * 120,000, which spent thirty-odd seconds in the line measurer proving
+     * exactly the same thing and made this the slowest test in the suite by an
+     * order of magnitude.
+     */
     const model = TEST_ONLY_model({
-      terms: [{ title: 'TEST_ONLY Enormous', body: 'x'.repeat(120_000) }],
+      terms: [{ title: 'TEST_ONLY Enormous', body: 'x'.repeat(12_000) }],
     });
 
     await expect(generate(model)).rejects.toThrowError(/too long to fit/i);

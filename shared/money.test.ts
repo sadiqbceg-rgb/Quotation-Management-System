@@ -9,11 +9,14 @@ import {
   halalas,
   halalasToSar,
   milli,
+  milliToQuantity,
   multiplyQuantityByRate,
   quantityToMilli,
   roundHalfUp,
   sarToHalalas,
+  subtractHalalas,
   sumHalalas,
+  sumMilli,
 } from './money.js';
 
 describe('construction', () => {
@@ -161,5 +164,112 @@ describe('formatBasisPoints', () => {
   it('renders whole percentages without decimals', () => {
     expect(formatBasisPoints(1500)).toBe('15%');
     expect(formatBasisPoints(0)).toBe('0%');
+  });
+});
+
+describe('the decimal conversions at the edges', () => {
+  /*
+   * Money and quantities are integers everywhere inside the system. These four
+   * functions are the only places a decimal is allowed, and they are the only
+   * places a rounding mistake can enter — so each is asserted at the half, at
+   * zero, and at the values that expose a float.
+   */
+
+  it('converts SAR to halalas, rounding halves away from zero', () => {
+    expect(sarToHalalas(0)).toBe(0);
+    expect(sarToHalalas(2500.5)).toBe(250_050);
+    expect(sarToHalalas(0.005)).toBe(1);
+    expect(sarToHalalas(-0.005)).toBe(-1);
+  });
+
+  it('is exact for every price the system will actually be given', () => {
+    /*
+     * The domain matters here.
+     *
+     * `sarToHalalas` multiplies by 100 and rounds, so its answer for a THIRD
+     * decimal depends on the float representation: 8.115 is stored slightly
+     * high and gives 812, while 1.005 is stored slightly low and gives 100.
+     * That is a real property of binary floating point, not something rounding
+     * can fix from inside this function.
+     *
+     * It is also unreachable. `parsePrice` refuses anything with more than
+     * `PRICE_LIMITS.maxDecimals` (2) decimal places before a value ever gets
+     * here, so the only inputs in the contract are the ones below — and for
+     * every one of them the conversion is exact.
+     */
+    const twoDecimalPrices = [
+      0.01, 0.05, 0.1, 0.25, 1.01, 1.99, 8.11, 8.12, 18.5, 19.99, 20, 350, 2500.5, 999_999.99,
+    ];
+
+    for (const sar of twoDecimalPrices) {
+      expect(sarToHalalas(sar), `SAR ${String(sar)}`).toBe(Math.round(sar * 100));
+    }
+  });
+
+  it('is exact for every quantity the system will actually be given', () => {
+    // `parseQuantity` caps at three decimals, and thousandths are the unit.
+    const threeDecimalQuantities = [0.001, 0.125, 0.333, 1.5, 2.25, 40, 41, 999.999];
+
+    for (const quantity of threeDecimalQuantities) {
+      expect(quantityToMilli(quantity), String(quantity)).toBe(Math.round(quantity * 1_000));
+    }
+  });
+
+  it('refuses a non-finite SAR amount rather than producing NaN halalas', () => {
+    expect(() => sarToHalalas(Number.NaN)).toThrow(MoneyError);
+    expect(() => sarToHalalas(Number.POSITIVE_INFINITY)).toThrow(MoneyError);
+  });
+
+  it('converts halalas back to SAR for display', () => {
+    expect(halalasToSar(halalas(250_050))).toBe(2500.5);
+    expect(halalasToSar(halalas(0))).toBe(0);
+  });
+
+  it('converts a decimal quantity to thousandths', () => {
+    expect(quantityToMilli(1.5)).toBe(1_500);
+    expect(quantityToMilli(0.0005)).toBe(1);
+    expect(quantityToMilli(0)).toBe(0);
+  });
+
+  it('refuses a non-finite quantity', () => {
+    expect(() => quantityToMilli(Number.NaN)).toThrow(MoneyError);
+  });
+
+  it('converts thousandths back to a decimal quantity', () => {
+    expect(milliToQuantity(milli(1_500))).toBe(1.5);
+    expect(milliToQuantity(milli(1))).toBe(0.001);
+  });
+
+  it('round-trips every conversion without losing a unit', () => {
+    for (const sar of [0, 0.01, 1, 19.99, 2500.5, 1_000_000]) {
+      expect(halalasToSar(sarToHalalas(sar)), `SAR ${String(sar)}`).toBe(sar);
+    }
+    for (const quantity of [0, 0.001, 1, 1.5, 40, 999.999]) {
+      expect(milliToQuantity(quantityToMilli(quantity)), String(quantity)).toBe(quantity);
+    }
+  });
+});
+
+describe('roundHalfUp', () => {
+  it('refuses a non-finite value rather than returning NaN', () => {
+    expect(() => roundHalfUp(Number.NaN)).toThrow(MoneyError);
+    expect(() => roundHalfUp(Number.POSITIVE_INFINITY)).toThrow(MoneyError);
+  });
+});
+
+describe('subtraction and quantity summation', () => {
+  it('subtracts exactly, which is what a discount line does', () => {
+    expect(subtractHalalas(halalas(100_000), halalas(7_500))).toBe(92_500);
+    expect(subtractHalalas(halalas(100), halalas(100))).toBe(0);
+  });
+
+  it('sums quantities without drifting, over a thousand lines', () => {
+    // The Total Manpower line on the approved document is this sum.
+    const values = Array.from({ length: 1_000 }, () => milli(1_001));
+    expect(sumMilli(values)).toBe(1_001_000);
+  });
+
+  it('sums an empty list to zero rather than failing', () => {
+    expect(sumMilli([])).toBe(0);
   });
 });

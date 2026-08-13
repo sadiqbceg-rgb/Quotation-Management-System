@@ -24,6 +24,26 @@ const GENERATED = join(process.cwd(), 'src', 'assets', 'generated');
 const FONTS = join(process.cwd(), 'src', 'assets', 'fonts');
 
 /**
+ * The letterhead and the two fonts, read once.
+ *
+ * They are the same bytes every time and together come to a couple of
+ * megabytes; re-reading them per generated document was several seconds across
+ * the suite for no difference in what is tested. A fresh `Uint8Array` view is
+ * handed out each call so no caller can mutate another's copy.
+ */
+let cached: { letterhead: Buffer; regular: Buffer; bold: Buffer; seal: Buffer } | null = null;
+
+function assetBytes() {
+  cached ??= {
+    letterhead: readFileSync(join(GENERATED, 'letterhead.pdf')),
+    regular: readFileSync(join(FONTS, 'Carlito-Regular.ttf')),
+    bold: readFileSync(join(FONTS, 'Carlito-Bold.ttf')),
+    seal: readFileSync(join(GENERATED, 'seal-transparent.png')),
+  };
+  return cached;
+}
+
+/**
  * Not a signature. A 640×120 flat block wearing a PNG header, so the embedder
  * has something valid to place in the signature rect.
  */
@@ -32,11 +52,13 @@ export function TEST_ONLY_signatureBytes(): Uint8Array {
 }
 
 export function TEST_ONLY_pdfAssets(overrides: Partial<PdfAssets> = {}): PdfAssets {
+  const bytes = assetBytes();
+
   return {
-    letterhead: new Uint8Array(readFileSync(join(GENERATED, 'letterhead.pdf'))),
-    fontRegular: new Uint8Array(readFileSync(join(FONTS, 'Carlito-Regular.ttf'))),
-    fontBold: new Uint8Array(readFileSync(join(FONTS, 'Carlito-Bold.ttf'))),
-    seal: new Uint8Array(readFileSync(join(GENERATED, 'seal-transparent.png'))),
+    letterhead: new Uint8Array(bytes.letterhead),
+    fontRegular: new Uint8Array(bytes.regular),
+    fontBold: new Uint8Array(bytes.bold),
+    seal: new Uint8Array(bytes.seal),
     signature: TEST_ONLY_signatureBytes(),
     ...overrides,
   };

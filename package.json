@@ -18,6 +18,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,css,json,md}\"",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "gas:build": "node google-apps-script/esbuild.config.mjs",
     "gas:push": "npm run gas:build && clasp push"
@@ -53,6 +54,7 @@
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "^3.2.7",
     "esbuild": "^0.25.0",
     "eslint": "^9.20.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",

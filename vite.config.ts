@@ -16,20 +16,11 @@ export default defineConfig({
     sourcemap: false,
     target: 'es2022',
   },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./vitest.setup.ts'],
-    include: [
-      'src/**/*.test.{ts,tsx}',
-      'shared/**/*.test.ts',
-      'google-apps-script/**/*.test.ts',
-      'scripts/**/*.test.ts',
-    ],
-    coverage: {
-      provider: 'v8',
-      reportsDirectory: './coverage',
-      include: ['src/**', 'shared/**', 'google-apps-script/src/**'],
-    },
-  },
+  /*
+   * The test configuration and the coverage gates live in `vitest.config.ts`.
+   *
+   * Vitest reads that file in preference to this one and merges this config
+   * into it, so the aliases and plugins above are still what tests resolve
+   * against. This file is about the bundle.
+   */
 });

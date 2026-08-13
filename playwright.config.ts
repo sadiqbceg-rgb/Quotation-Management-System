@@ -1,4 +1,23 @@
+import { existsSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
+
+/**
+ * The Chromium to launch.
+ *
+ * This machine already has one, and `@playwright/test` would otherwise download
+ * its own — several hundred megabytes on every clean checkout, and impossible
+ * offline. So the installed binary is used when it is there.
+ *
+ * A GitHub runner has no such binary; it runs `playwright install` instead. The
+ * existence check is what lets one config serve both, and it fails towards
+ * Playwright's own browser rather than towards a path that is not there.
+ */
+function chromiumLaunchOptions(): { executablePath?: string } {
+  const configured =
+    process.env['PLAYWRIGHT_CHROMIUM'] ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+
+  return configured.length > 0 && existsSync(configured) ? { executablePath: configured } : {};
+}
 
 /**
  * Browser tests.
@@ -38,10 +57,7 @@ export default defineConfig({
          * download on every clean checkout. Override with PLAYWRIGHT_CHROMIUM
          * if your environment puts it elsewhere.
          */
-        launchOptions: {
-          executablePath:
-            process.env['PLAYWRIGHT_CHROMIUM'] ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-        },
+        launchOptions: chromiumLaunchOptions(),
       },
     },
   ],
@@ -55,5 +71,18 @@ export default defineConfig({
     url: 'http://127.0.0.1:5174/e2e/pdf-harness.html',
     reuseExistingServer: process.env['CI'] === undefined,
     timeout: 120_000,
+    /*
+     * The endpoint the built app is pointed at for the journey specs.
+     *
+     * Not a real deployment — `e2e/support/backend.ts` intercepts every request
+     * to it and answers from the real Apps Script router running in-process.
+     * Setting it here rather than in a committed `.env` keeps the value out of
+     * anything a developer might accidentally build against, and means CI needs
+     * no secret to run E2E (it must never point at production).
+     */
+    env: {
+      VITE_GAS_ENDPOINT: 'https://script.google.com/macros/s/TEST_ONLY-e2e-deployment/exec',
+      VITE_APP_ENV: 'development',
+    },
   },
 });

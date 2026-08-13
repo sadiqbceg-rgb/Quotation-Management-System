@@ -195,10 +195,38 @@ export interface SpreadsheetFake {
   dataRows: (name: string) => unknown[][];
   /** A sheet's recorded formatting, for assertions. */
   formatting: (name: string) => SheetFake | undefined;
+  /** Round trips to `getRange`, for asserting the per-save cost stays constant. */
+  rangeCalls: () => number;
+  /**
+   * Fire a callback immediately before a sheet's values are read.
+   *
+   * This is the seam the concurrency harness suspends a request at: a reader
+   * that is mid-critical-section can be interrupted here and another request
+   * started from inside it, which is what makes an interleaving test genuine
+   * rather than a sequential loop (Phase 13, Architecture Requirements).
+   *
+   * Pass `null` to remove it. Reads performed BY the listener do not re-enter
+   * it, so a listener may itself use the spreadsheet without looping forever.
+   */
+  onRead: (listener: ((sheetName: string) => void) | null) => void;
 }
 
 export function createSpreadsheetFake(): SpreadsheetFake {
   const sheets = new Map<string, SheetFake>();
+  let rangeCallCount = 0;
+  let readListener: ((sheetName: string) => void) | null = null;
+  let insideListener = false;
+
+  function announceRead(sheetName: string): void {
+    if (readListener === null || insideListener) return;
+
+    insideListener = true;
+    try {
+      readListener(sheetName);
+    } finally {
+      insideListener = false;
+    }
+  }
 
   function buildSheet(sheet: SheetFake): unknown {
     return {
@@ -224,7 +252,14 @@ export function createSpreadsheetFake(): SpreadsheetFake {
       appendRow: (values: unknown[]): void => {
         sheet.rows.push(values.slice());
       },
-      getRange: (row: number, column: number, numRows = 1, numColumns = 1) => ({
+      getRange: (row: number, column: number, numRows = 1, numColumns = 1) => {
+        rangeCallCount += 1;
+        return {
+        getValue: (): unknown => {
+          const value = sheet.rows[row - 1]?.[column - 1] ?? '';
+          announceRead(sheet.name);
+          return value;
+        },
         getValues: (): unknown[][] => {
           const out: unknown[][] = [];
           for (let r = 0; r < numRows; r++) {
@@ -235,6 +270,16 @@ export function createSpreadsheetFake(): SpreadsheetFake {
             }
             out.push(slice);
           }
+          /*
+           * Announced AFTER the values are captured, not before.
+           *
+           * The window a concurrent execution is dangerous in is the one
+           * between a read completing and the matching write — the caller is
+           * now holding a snapshot that another execution can invalidate.
+           * Firing before the copy would let an interrupted reader see the
+           * intruder's writes, which is the one thing a real race never does.
+           */
+          announceRead(sheet.name);
           return out;
         },
         setValues: (values: unknown[][]): void => {
@@ -263,7 +308,8 @@ export function createSpreadsheetFake(): SpreadsheetFake {
               : [];
           sheet.validations.set(column, values);
         },
-      }),
+        };
+      },
     };
   }
 
@@ -290,6 +336,10 @@ export function createSpreadsheetFake(): SpreadsheetFake {
     sheets,
     dataRows: (name: string) => (sheets.get(name)?.rows ?? []).slice(1),
     formatting: (name: string) => sheets.get(name),
+    rangeCalls: () => rangeCallCount,
+    onRead: (listener) => {
+      readListener = listener;
+    },
   };
 }
 

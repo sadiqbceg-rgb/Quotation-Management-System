@@ -48,7 +48,12 @@ export interface ExportBlocker {
 export interface ExportValidationInput {
   quotationFor: string;
   client: { clientName: string; companyName: string; address: string };
-  lines: ReadonlyArray<{ description: string; quantity: number; unitPrice: number }>;
+  lines: ReadonlyArray<{
+    description: string;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+  }>;
   terms: ReadonlyArray<{ title: string; body: string }>;
   closingParagraph: string;
   signatory: { name: string } | null;
@@ -101,9 +106,14 @@ export function validateForExport(input: ExportValidationInput): ExportBlocker[]
       section: 'Items',
     });
   } else {
+    // PRD §36 requires a Unit on every line, and the printed table has a Unit
+    // column on every row — a blank one is a gap the client reads.
     const invalid = input.lines.filter(
       (line) =>
-        line.description.trim().length === 0 || line.quantity <= 0 || line.unitPrice < 0,
+        line.description.trim().length === 0 ||
+        line.quantity <= 0 ||
+        line.unit.trim().length === 0 ||
+        line.unitPrice < 0,
     );
 
     if (invalid.length > 0) {
@@ -111,8 +121,8 @@ export function validateForExport(input: ExportValidationInput): ExportBlocker[]
         code: 'INVALID_ITEM',
         message:
           invalid.length === 1
-            ? 'One item is missing a description or a valid quantity.'
-            : `${String(invalid.length)} items are missing a description or a valid quantity.`,
+            ? 'One item is missing a description, a unit or a valid quantity.'
+            : `${String(invalid.length)} items are missing a description, a unit or a valid quantity.`,
         section: 'Items',
       });
     }

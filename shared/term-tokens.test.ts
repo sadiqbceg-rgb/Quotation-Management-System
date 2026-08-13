@@ -44,9 +44,7 @@ describe('the whitelist', () => {
       context(),
     );
 
-    expect(result.text).toBe(
-      '15% VAT applies to TEST_ONLY Client Co. under SFC/RUH/QTN/2026/004.',
-    );
+    expect(result.text).toBe('15% VAT applies to TEST_ONLY Client Co. under SFC/RUH/QTN/2026/004.');
   });
 
   it('resolves repeated occurrences of the same token', () => {
@@ -83,7 +81,10 @@ describe('unknown tokens', () => {
 
 describe('empty context values', () => {
   it('leaves a whitelisted token verbatim when there is no value yet', () => {
-    const result = resolveTermTokens('VAT No. {{company.vatNumber}}', context({ companyVatNumber: '' }));
+    const result = resolveTermTokens(
+      'VAT No. {{company.vatNumber}}',
+      context({ companyVatNumber: '' }),
+    );
 
     expect(result.text).toBe('VAT No. {{company.vatNumber}}');
     expect(result.emptyTokens).toEqual(['company.vatNumber']);

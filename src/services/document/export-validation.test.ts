@@ -11,7 +11,9 @@ function input(overrides: Partial<ExportValidationInput> = {}): ExportValidation
       companyName: 'TEST_ONLY Client Co.',
       address: 'TEST_ONLY Address, Riyadh',
     },
-    lines: [{ description: 'TEST_ONLY General Labour', quantity: 40_000, unitPrice: 2000 }],
+    lines: [
+      { description: 'TEST_ONLY General Labour', quantity: 40_000, unit: 'Hour', unitPrice: 2000 },
+    ],
     terms: [{ title: 'TEST_ONLY Working Hours', body: 'TEST_ONLY minimum hours per day.' }],
     closingParagraph: 'TEST_ONLY thank you.',
     signatory: { name: 'TEST_ONLY_Signatory' },
@@ -55,14 +57,14 @@ describe('required fields', () => {
   });
 
   it('blocks an item with no description', () => {
-    expect(codes({ lines: [{ description: '  ', quantity: 1000, unitPrice: 100 }] })).toContain(
-      'INVALID_ITEM',
-    );
+    expect(
+      codes({ lines: [{ description: '  ', quantity: 1000, unit: 'Hour', unitPrice: 100 }] }),
+    ).toContain('INVALID_ITEM');
   });
 
   it('blocks an item with a zero quantity', () => {
     expect(
-      codes({ lines: [{ description: 'TEST_ONLY x', quantity: 0, unitPrice: 100 }] }),
+      codes({ lines: [{ description: 'TEST_ONLY x', quantity: 0, unit: 'Hour', unitPrice: 100 }] }),
     ).toContain('INVALID_ITEM');
   });
 

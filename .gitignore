@@ -30,6 +30,9 @@ google-apps-script/.clasp.json
 test-results/
 playwright-report/
 
+# anything a test produced — generated PDFs, DOCXs and logs (Phase 13)
+.test-output/
+
 # logs
 npm-debug.log*
 *.log

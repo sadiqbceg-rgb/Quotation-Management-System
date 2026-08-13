@@ -54,8 +54,25 @@ export interface UseLineItemsResult {
   /** Only the categories the user has actually added, in PRD order. */
   categories: ItemCategory[];
   groups: CategoryGroup[];
-  /** PRD §17: the Remarks column appears only if some item has a remark. */
+  /**
+   * PRD §17: the Remarks column is PRINTED only if some item has a remark.
+   *
+   * This is the document's rule, and it is derived from the data — it is not
+   * what the editor shows.
+   */
   showRemarksColumn: boolean;
+  /**
+   * Whether the EDITOR shows the Remarks column.
+   *
+   * A separate flag, because the two rules are different and conflating them
+   * made remarks impossible to enter: the column appeared only once an item had
+   * a remark, and the only way to give an item a remark was to type in that
+   * column (PRD §45.11). This is true whenever a remark already exists — so an
+   * existing quotation still shows them — and can be switched on to add the
+   * first one.
+   */
+  remarksColumnVisible: boolean;
+  setRemarksColumnVisible: (visible: boolean) => void;
   addCategory: (category: ItemCategory) => void;
   removeCategory: (category: ItemCategory) => void;
   addItem: (category: ItemCategory) => void;
@@ -76,6 +93,7 @@ export interface UseLineItemsResult {
  */
 export function useLineItems(initial: EditorLineItem[] = []): UseLineItemsResult {
   const [items, setItems] = useState<EditorLineItem[]>(initial);
+  const [remarksRequested, setRemarksRequested] = useState(false);
   const [categories, setCategories] = useState<ItemCategory[]>(() =>
     ITEM_CATEGORIES.filter((category) => initial.some((item) => item.category === category)),
   );
@@ -174,6 +192,10 @@ export function useLineItems(initial: EditorLineItem[] = []): UseLineItemsResult
     categories,
     groups,
     showRemarksColumn,
+    // Shown when the user asked for it, or when there is already a remark to
+    // display — otherwise loading a quotation that has remarks would hide them.
+    remarksColumnVisible: remarksRequested || showRemarksColumn,
+    setRemarksColumnVisible: setRemarksRequested,
     addCategory,
     removeCategory,
     addItem,

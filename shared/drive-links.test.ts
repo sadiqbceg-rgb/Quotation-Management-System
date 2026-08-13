@@ -58,9 +58,9 @@ describe('parsing a response', () => {
   });
 
   it('refuses a target whose link is not a Drive link', () => {
-    expect(() =>
-      parseDriveTarget({ fileId: FILE_ID, url: 'https://example.invalid/x' }),
-    ).toThrow(DriveLinkError);
+    expect(() => parseDriveTarget({ fileId: FILE_ID, url: 'https://example.invalid/x' })).toThrow(
+      DriveLinkError,
+    );
   });
 
   it('refuses a missing or malformed target rather than rendering a dead link', () => {

@@ -142,7 +142,17 @@ export default function NewQuotationPage() {
       });
 
       if (finalize) {
-        void navigate('/quotations');
+        /*
+         * Straight to the new quotation's own preview, which is where PRD §45
+         * goes next: preview (19) → PDF (20) → Word (21) → Save to Drive (22).
+         *
+         * It used to go to `/quotations`, the register — and the register is
+         * populated from the tracking sheet, which is only written once the
+         * documents are IN Drive. So a quotation that had just been created was
+         * not on the screen the user was sent to, and there was no link back to
+         * it from anywhere: the preview was reachable only by typing the URL.
+         */
+        void navigate(`/quotations/${result.draftId}/preview`);
       }
     } catch (error: unknown) {
       show({

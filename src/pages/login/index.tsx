@@ -46,6 +46,26 @@ export default function LoginPage() {
     defaultValues: { email: '', password: '' },
   });
 
+  /*
+   * Where to go once there is a session.
+   *
+   * Computed BEFORE the `isAuthenticated` guard below, and used by it.
+   *
+   * It used to be computed after, and the guard sent everyone to `/`. Signing
+   * in updates the auth state, which re-renders this component, which hit that
+   * guard and navigated to the dashboard — racing, and usually beating, the
+   * `navigate(redirectTo)` at the end of `onSubmit`. The effect was that
+   * RequireAuth's whole reason for recording `from` never worked: a user who
+   * asked for New Quotation, signed in, and landed on the dashboard.
+   *
+   * `from` is set by RequireAuth from the current in-app location, so it is
+   * never attacker-supplied; the shape check keeps it that way even if some
+   * future caller passes something else, since this value reaches `navigate`.
+   */
+  const requested = (location.state as LocationState | null)?.from;
+  const redirectTo =
+    typeof requested === 'string' && /^\/(?!\/)/.test(requested) ? requested : '/';
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -55,10 +75,8 @@ export default function LoginPage() {
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={redirectTo} replace />;
   }
-
-  const redirectTo = (location.state as LocationState | null)?.from ?? '/';
 
   const onSubmit = async (values: LoginForm): Promise<void> => {
     setFormError(null);
