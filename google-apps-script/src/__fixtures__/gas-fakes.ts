@@ -85,12 +85,13 @@ export function createUtilitiesFakeWithBlobDecode() {
   const base = createUtilitiesFake();
   return {
     ...base,
-    newBlob(value: string | number[], _mimeType?: string, name?: string) {
+    newBlob(value: string | number[], mimeType?: string, name?: string) {
       const buffer = toBuffer(value);
       return {
         getBytes: (): number[] => toSigned(buffer),
         getDataAsString: (): string => buffer.toString('utf8'),
         getName: (): string => name ?? '',
+        getContentType: (): string => mimeType ?? '',
       };
     },
   };
@@ -353,14 +354,26 @@ export interface DriveFileFake {
 
 export interface DriveFake {
   service: unknown;
+  /** The Advanced Drive Service (`Drive`), for content replacement. */
+  advanced: unknown;
   files: () => DriveFileFake[];
   folderPath: (folderId: string) => string;
   /** Files in a folder, by the folder's path from the root. */
   filesIn: (path: string) => DriveFileFake[];
-  /** Every sharing call made. Must stay empty: signatures are never shared. */
+  /** Every folder path that exists, for asserting no duplicates were created. */
+  folderPaths: () => string[];
+  /** Every sharing call made. Must stay empty: nothing is ever made public. */
   sharingCalls: () => string[];
   /** Make the next createFile throw, to exercise the failure path. */
   failNextCreate: (message: string) => void;
+  /** Make the next createFolder throw. */
+  failNextFolder: (message: string) => void;
+  /** Make `Drive.Files.update` throw on the next call. */
+  failNextUpdate: (message: string) => void;
+  /** Every `Drive.Files.update` call, as `fileId:byteLength`. */
+  updateCalls: () => string[];
+  /** Remove the Advanced Drive Service, as an unconfigured deployment would. */
+  disableAdvancedService: () => void;
 }
 
 /**
@@ -384,10 +397,16 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
 
   let sequence = 0;
   let pendingFailure: string | null = null;
+  let pendingFolderFailure: string | null = null;
+  let pendingUpdateFailure: string | null = null;
+  let advancedEnabled = true;
+  const updates: string[] = [];
 
   function nextId(prefix: string): string {
     sequence += 1;
-    return `${prefix}-${String(sequence)}`;
+    // Drive ids are opaque but URL-safe and at least 8 characters; the branded
+    // constructor enforces that, so the fake has to produce plausible ones.
+    return `${prefix}-000000-${String(sequence)}`;
   }
 
   function pathOf(folderId: string): string {
@@ -405,12 +424,16 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
     return {
       getId: (): string => file.id,
       getName: (): string => file.name,
+      getUrl: (): string => `https://drive.google.com/file/d/${file.id}/view`,
       getBlob: () => ({
         getBytes: (): number[] => file.bytes,
         getName: (): string => file.name,
       }),
       setSharing: (access: string): void => {
         sharing.push(`file:${file.id}:${access}`);
+      },
+      addViewer: (email: string): void => {
+        sharing.push(`file:${file.id}:viewer:${email}`);
       },
       getDownloadUrl: (): string => {
         sharing.push(`file:${file.id}:downloadUrl`);
@@ -419,10 +442,17 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
     };
   }
 
+  interface BlobFake {
+    getBytes: () => number[];
+    getName: () => string;
+    getContentType?: () => string;
+  }
+
   function buildFolder(node: FolderNode): unknown {
     return {
       getId: (): string => node.id,
       getName: (): string => node.name,
+      getUrl: (): string => `https://drive.google.com/drive/folders/${node.id}`,
 
       getFoldersByName: (name: string) => {
         const matches = [...folders.values()].filter(
@@ -440,13 +470,35 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
         };
       },
 
+      getFilesByName: (name: string) => {
+        const matches = [...files.values()].filter(
+          (file) => file.folderId === node.id && file.name === name,
+        );
+        let index = 0;
+        return {
+          hasNext: (): boolean => index < matches.length,
+          next: (): unknown => {
+            const match = matches[index];
+            index += 1;
+            if (match === undefined) throw new Error('No such file.');
+            return buildFile(match);
+          },
+        };
+      },
+
       createFolder: (name: string): unknown => {
+        if (pendingFolderFailure !== null) {
+          const message = pendingFolderFailure;
+          pendingFolderFailure = null;
+          throw new Error(message);
+        }
+
         const created: FolderNode = { id: nextId('folder'), name, parentId: node.id };
         folders.set(created.id, created);
         return buildFolder(created);
       },
 
-      createFile: (blob: { getBytes: () => number[]; getName: () => string }): unknown => {
+      createFile: (blob: BlobFake): unknown => {
         if (pendingFailure !== null) {
           const message = pendingFailure;
           pendingFailure = null;
@@ -456,7 +508,7 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
         const file: DriveFileFake = {
           id: nextId('file'),
           name: blob.getName(),
-          mimeType: 'image/png',
+          mimeType: blob.getContentType?.() ?? 'image/png',
           bytes: blob.getBytes(),
           folderId: node.id,
         };
@@ -469,6 +521,29 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
       },
     };
   }
+
+  const filesCollection = {
+    update: (_resource: unknown, fileId: string, media: BlobFake): unknown => {
+      if (pendingUpdateFailure !== null) {
+        const message = pendingUpdateFailure;
+        pendingUpdateFailure = null;
+        throw new Error(message);
+      }
+
+      const file = files.get(fileId);
+      if (file === undefined) throw new Error(`No file with id ${fileId}`);
+
+      file.bytes = media.getBytes();
+      updates.push(`${fileId}:${String(file.bytes.length)}`);
+      return { id: file.id, name: file.name };
+    },
+  };
+
+  const advancedService = {
+    get Files(): unknown {
+      return advancedEnabled ? filesCollection : undefined;
+    },
+  };
 
   return {
     service: {
@@ -488,12 +563,36 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
       },
     },
 
+    /**
+     * The Advanced Drive Service.
+     *
+     * Only `Files.update` with media is used — content replacement, which
+     * DriveApp cannot do at all. It keeps the file id and the URL, which is
+     * what makes a retry replace rather than duplicate.
+     *
+     * `Files` is a getter so a test can take the service away mid-run, which is
+     * what an Apps Script deployment that never enabled it looks like.
+     */
+    advanced: advancedService,
+
     files: () => [...files.values()],
     folderPath: pathOf,
     filesIn: (path: string) => [...files.values()].filter((file) => pathOf(file.folderId) === path),
+    folderPaths: () =>
+      [...folders.values()].filter((node) => node.parentId !== null).map((node) => pathOf(node.id)),
     sharingCalls: () => [...sharing],
     failNextCreate: (message: string) => {
       pendingFailure = message;
+    },
+    failNextFolder: (message: string) => {
+      pendingFolderFailure = message;
+    },
+    failNextUpdate: (message: string) => {
+      pendingUpdateFailure = message;
+    },
+    updateCalls: () => [...updates],
+    disableAdvancedService: () => {
+      advancedEnabled = false;
     },
   };
 }
@@ -534,6 +633,9 @@ export function installGasFakes(
 
   stub('Utilities', createUtilitiesFakeWithBlobDecode());
   stub('DriveApp', driveFake.service);
+  // The Advanced Drive Service, declared in appsscript.json. Only content
+  // replacement uses it; everything else goes through DriveApp.
+  stub('Drive', driveFake.advanced);
   stub('PropertiesService', propertiesFake.service);
   stub('CacheService', cacheFake.service);
   stub('ContentService', createContentServiceFake());

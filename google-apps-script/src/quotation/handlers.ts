@@ -8,13 +8,22 @@
  */
 
 import { QUOTATION_STATUSES, type QuotationStatus } from '@shared/types';
+import { DOCUMENT_KINDS, describeArchivePath, type DocumentKind } from '@shared/drive-paths';
+import type { DriveTarget } from '@shared/drive-links';
 import { isValidQuotationNumber } from '@shared/numbering';
+import { PATTERNS } from '@shared/validation-rules';
 import { writeAudit } from '../audit/audit-log';
 import { quotationCodes } from '../config/properties';
+import { storeQuotationDocuments } from '../drive/quotation-storage';
 import { ApiError, type Caller, type HandlerContext } from '../errors';
 import { lookupForSnapshot } from '../persons/handlers';
 import { reserveQuotationNumber } from '../quotation-number/reserve';
 import * as records from '../sheets/quotation-records-sheet';
+import {
+  assertCombinedSize,
+  validateDocumentUpload,
+  type ValidatedDocument,
+} from '../validation/document-validator';
 import { validateQuotation } from '../validation/quotation-validator';
 
 function requireCaller(context: HandlerContext): Caller {
@@ -195,6 +204,150 @@ export function save(payload: unknown, context: HandlerContext): SaveResponse {
     status: result.status,
     createdAt: result.createdAt,
     updatedAt: result.updatedAt,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Upload to Drive (PRD §30)                                                  */
+/* -------------------------------------------------------------------------- */
+
+export interface UploadToDriveResponse {
+  outcome: 'success' | 'partial';
+  draftId: string;
+  quotationNumber: string;
+  folder: DriveTarget;
+  /** Root-relative: `['2026', 'August', 'SFC-RUH-QTN-2026-004']`. */
+  path: string[];
+  /** Human-readable form of the same path, for the success panel. */
+  pathLabel: string;
+  files: { pdf: DriveTarget | null; docx: DriveTarget | null };
+  /** Empty on success. What a Retry Upload must send. */
+  missing: DocumentKind[];
+}
+
+/**
+ * Upload the generated documents to the Drive archive.
+ *
+ * PRD §30 steps 5–12 and 15. Steps 1–4 (validate, ensure a number, generate the
+ * two files) happen in the browser, which is where the generators live; this
+ * action is what turns their output into archived documents.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT MAKES A RETRY SAFE
+ * ---------------------------------------------------------------------------
+ * The `draftId` is the key to everything. It resolves to the stored quotation,
+ * whose number was issued once and is immutable (§7.7), which yields the same
+ * folder and the same two filenames — so a retry replaces content in place and
+ * can never produce `SFC-RUH-QTN-2026-004 (1).pdf`.
+ *
+ * The number is read from the STORED RECORD, never from the request. A client
+ * that could name its own target folder could file a document under any
+ * quotation in the archive.
+ *
+ * PRD §37: on failure the quotation is not marked saved. Nothing here writes a
+ * status, and no URL is recorded anywhere — the tracking row is Phase 11's, and
+ * it is only reached on `success` (see the integration point below).
+ */
+export function uploadToDrive(payload: unknown, context: HandlerContext): UploadToDriveResponse {
+  const caller = requireCaller(context);
+  const body = asRecord(payload);
+
+  const draftId = readString(body, 'draftId');
+  if (draftId.length === 0 || draftId.length > 64) {
+    throw new ApiError('VALIDATION_FAILED', 'A valid draft identifier is required.');
+  }
+
+  const record = records.findByDraftId(draftId);
+  if (record === null) {
+    throw new ApiError('VALIDATION_FAILED', 'That quotation could not be found.');
+  }
+
+  const codes = quotationCodes();
+
+  // PRD §30 step 2. A draft has no number, and a folder cannot be named after
+  // one that does not exist yet.
+  if (!isValidQuotationNumber(record.quotationNumber, codes)) {
+    throw new ApiError(
+      'VALIDATION_FAILED',
+      'This quotation has no number yet. Create the quotation before saving it to Google Drive.',
+    );
+  }
+
+  const stored = parsePayload(record.payload);
+  const quotationDate = typeof stored.quotationDate === 'string' ? stored.quotationDate : '';
+
+  // The year and month folders come from this date (PRD §10), so an unusable
+  // one has to fail here rather than file the quotation under the wrong month.
+  if (!PATTERNS.isoDate.test(quotationDate)) {
+    throw new ApiError(
+      'VALIDATION_FAILED',
+      'This quotation has no valid date, so it cannot be filed in the archive.',
+    );
+  }
+
+  const documentsPayload = asRecord(body['documents']);
+  const documents: Partial<Record<DocumentKind, ValidatedDocument>> = {};
+
+  for (const kind of DOCUMENT_KINDS) {
+    const supplied = documentsPayload[kind];
+    // Absent is legitimate on a retry; present-but-wrong never is.
+    if (supplied === undefined || supplied === null) continue;
+    documents[kind] = validateDocumentUpload(kind, supplied);
+  }
+
+  const validated = DOCUMENT_KINDS.map((kind) => documents[kind]).filter(
+    (document): document is ValidatedDocument => document !== undefined,
+  );
+
+  if (validated.length === 0) {
+    throw new ApiError(
+      'VALIDATION_FAILED',
+      'No quotation documents were supplied for upload.',
+    );
+  }
+  assertCombinedSize(validated);
+
+  const result = storeQuotationDocuments({
+    quotationNumber: record.quotationNumber,
+    quotationDate,
+    codes,
+    documents,
+  });
+
+  /*
+   * PHASE 11 INTEGRATION POINT.
+   *
+   * On `success`, the tracking row is written here: the quotation number, the
+   * client, the totals, the folder URL and both file URLs. It is deliberately
+   * NOT written on `partial` — a row claiming a document that is not in the
+   * archive is worse than no row at all (§23.2).
+   *
+   * Phase 10 stops at returning the URLs; nothing below this comment writes to
+   * the `Quotations` sheet.
+   */
+
+  writeAudit({
+    actor: caller.email,
+    action: 'quotation.uploadToDrive',
+    // The number and the file ids — never the payloads, never base64 (§19.7).
+    target: [
+      record.quotationNumber,
+      result.outcome,
+      ...result.uploaded.map((file) => `${file.kind}:${file.fileId}:${file.disposition}`),
+    ].join(' '),
+    outcome: result.outcome === 'success' ? 'success' : 'failure',
+    requestId: context.requestId,
+  });
+
+  return {
+    outcome: result.outcome,
+    draftId,
+    quotationNumber: record.quotationNumber,
+    folder: result.folder,
+    path: result.path,
+    pathLabel: describeArchivePath(result.path),
+    files: result.files,
+    missing: result.outcome === 'success' ? [] : result.missing,
   };
 }
 

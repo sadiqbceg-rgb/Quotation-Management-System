@@ -124,6 +124,13 @@ export const ACTIONS: Record<string, ActionDefinition> = {
     access: 'authenticated',
     handler: quotation.updateStatus,
   },
+  // Carries the generated PDF and DOCX as base64 in the body — the same
+  // `text/plain` POST as everything else, because a second transport would
+  // trigger a CORS preflight this Web App cannot answer (§15.2).
+  'quotation.uploadToDrive': {
+    access: 'authenticated',
+    handler: quotation.uploadToDrive,
+  },
 
   'items.list': {
     access: 'authenticated',

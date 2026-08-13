@@ -250,6 +250,9 @@ describe('the toolbar (PRD §29)', () => {
         isSavingPdf={false}
         onSaveWord={() => undefined}
         isSavingWord={false}
+        onSaveToDrive={() => undefined}
+        isSavingToDrive={false}
+        isSavedToDrive={false}
       />,
     );
   }
@@ -261,25 +264,18 @@ describe('the toolbar (PRD §29)', () => {
     expect(screen.getByRole('button', { name: /^print$/i })).toBeEnabled();
   });
 
-  it('enables Save as PDF and Save as Word once the quotation is exportable', () => {
+  it('enables every export once the quotation is exportable', () => {
     renderToolbar();
 
-    expect(screen.getByRole('button', { name: /save as pdf/i })).toBeEnabled();
-    expect(screen.getByRole('button', { name: /save as word/i })).toBeEnabled();
-  });
-
-  it('shows the not-yet-built exports disabled, with the phase named', () => {
-    renderToolbar();
-
-    const button = screen.getByRole('button', { name: /save to google drive/i });
-    expect(button).toBeDisabled();
-    expect(button).toHaveAttribute('title', expect.stringMatching(/phase/i));
+    for (const name of [/save as pdf/i, /save as word/i, /save to google drive/i]) {
+      expect(screen.getByRole('button', { name })).toBeEnabled();
+    }
   });
 
   it('explains the real blocker when the quotation is not exportable', () => {
     renderToolbar(false);
 
-    for (const name of [/save as pdf/i, /save as word/i]) {
+    for (const name of [/save as pdf/i, /save as word/i, /save to google drive/i]) {
       const button = screen.getByRole('button', { name });
       expect(button).toBeDisabled();
       expect(button).toHaveAttribute(

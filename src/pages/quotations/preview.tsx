@@ -11,6 +11,10 @@ import { PreviewToolbar } from '@/components/quotation/preview/PreviewToolbar';
 import { useAuth } from '@/hooks/useAuth';
 import { useGenerateDocx } from '@/hooks/useGenerateDocx';
 import { useGeneratePdf } from '@/hooks/useGeneratePdf';
+import { useSaveToDrive } from '@/hooks/useSaveToDrive';
+import { RetryUpload } from '@/components/quotation/RetryUpload';
+import { SaveProgress } from '@/components/quotation/SaveProgress';
+import { SaveResult } from '@/components/quotation/SaveResult';
 import { AppError, messageOf } from '@/services/api/errors';
 import { getQuotationByDraftId } from '@/services/quotation/quotation-service';
 import { fetchSignature } from '@/services/signatories/signatory-service';
@@ -110,6 +114,7 @@ export default function QuotationPreviewPage() {
   const scale = useFitScale();
   const pdf = useGeneratePdf();
   const docx = useGenerateDocx();
+  const drive = useSaveToDrive();
 
   const token = state.status === 'authenticated' ? state.token : null;
 
@@ -274,8 +279,46 @@ export default function QuotationPreviewPage() {
                   signature.data === undefined ? null : base64PngToBytes(signature.data),
                 );
               }}
+              isSavingToDrive={drive.state.status === 'saving'}
+              isSavedToDrive={drive.state.status === 'saved'}
+              onSaveToDrive={() => {
+                void drive.save({
+                  model: built.model,
+                  draftId: draftId ?? '',
+                  signature:
+                    signature.data === undefined ? null : base64PngToBytes(signature.data),
+                  token: token ?? '',
+                });
+              }}
             />
           </div>
+
+          {drive.state.status === 'saving' ? (
+            <div className="print-hide">
+              <SaveProgress step={drive.state.step} />
+            </div>
+          ) : null}
+
+          {drive.state.status === 'saved' ? (
+            <div className="print-hide">
+              <SaveResult result={drive.state.result} />
+            </div>
+          ) : null}
+
+          {drive.state.status === 'error' ? (
+            <div className="print-hide">
+              <RetryUpload
+                message={drive.state.message}
+                requestId={drive.state.requestId}
+                partial={drive.state.partial}
+                canRetry={drive.state.canRetry}
+                isRetrying={false}
+                onRetry={() => {
+                  void drive.retry();
+                }}
+              />
+            </div>
+          ) : null}
 
           {pdf.state.status === 'error' || docx.state.status === 'error' ? (
             <div className="print-hide">

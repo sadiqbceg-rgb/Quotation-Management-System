@@ -112,8 +112,8 @@ build and tests green.
 | 06 Authorized Persons    | complete          |
 | 07 Quotation Document    | complete          |
 | 08 PDF Generation        | complete          |
-| **09 DOCX Generation**   | **complete**      |
-| 10 Google Drive          | not started       |
+| 09 DOCX Generation       | complete          |
+| **10 Google Drive**      | **complete**      |
 | 11 Google Sheets         | not started       |
 | 12 Security              | not started       |
 | 13 Testing               | not started       |
@@ -224,6 +224,50 @@ The bands (header and footer) sit OUTSIDE the text margins, at negative indents:
 the logo starts at x 13.9 and the rules run to the page edge, while body text
 starts at x 34.0. See `docx-band.ts` — the alternative is a header inset 20 pt
 from where the artwork puts it.
+
+---
+
+## Google Drive
+
+`Save to Google Drive` files both documents in the company's archive, in the
+structure PRD §5 specifies:
+
+```
+Quotation Archive/2026/August/SFC-RUH-QTN-2026-004/
+                              SFC-RUH-QTN-2026-004.pdf
+                              SFC-RUH-QTN-2026-004.docx
+```
+
+The year and month come from the **quotation date**, not the clock — a quotation
+dated in January and saved in August files under January (PRD §10) — and the
+folder carries the exact number the application issued, never one re-derived.
+
+Four things are worth knowing:
+
+- **The browser never touches Drive.** No `googleapis`, no `gapi`, no Google
+  credential in the SPA. Documents travel as base64 in the same `text/plain`
+  POST as every other action, and Apps Script does the filing. A 500-line
+  quotation — the validation ceiling — comes to 1.76 MB of base64.
+- **Folder resolution runs under a script lock.** Drive permits two folders
+  called `August` in the same parent, so "look it up, then create it" creates a
+  second one when two people save in the same second, and nothing reports the
+  split. The uploads run OUTSIDE that lock; a 2 MB upload holding a global lock
+  would serialise every user of the deployment.
+- **A retry replaces, never duplicates.** An existing file of the target name has
+  its content replaced through the Advanced Drive Service, keeping the file id,
+  the URL already shown to the user, and Drive's revision history. There is no
+  path that produces `SFC-RUH-QTN-2026-004 (1).pdf`.
+- **Nothing is ever made public.** Files inherit the archive's permissions; no
+  sharing API is called anywhere, and a test asserts the Drive fake records zero
+  sharing calls.
+
+A partial upload — the PDF filed, the DOCX not — is a first-class outcome rather
+than an error: the result type will not narrow without handling it, the panel
+shows the link that does work, and the retry sends only what is missing.
+
+Every test runs against an in-memory Drive fake. No test can create a folder or
+a file in a real Drive, and development must use a separate root folder from
+production.
 
 ---
 

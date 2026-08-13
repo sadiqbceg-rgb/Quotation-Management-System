@@ -240,17 +240,89 @@ them through the ordinary "Add term" flow.
 
 ---
 
+## The Drive archive
+
+`DRIVE_ROOT_FOLDER_ID` is the one folder that must exist before anything else.
+Every other folder is created on first use.
+
+```
+Quotation Archive/                     ← DRIVE_ROOT_FOLDER_ID
+├── _assets/
+│   └── signatures/                    ← created automatically, PRIVATE
+├── 2026/
+│   ├── January/
+│   │   └── SFC-RUH-QTN-2026-001/
+│   │       ├── SFC-RUH-QTN-2026-001.pdf
+│   │       └── SFC-RUH-QTN-2026-001.docx
+│   └── August/
+│       └── SFC-RUH-QTN-2026-004/
+│           ├── SFC-RUH-QTN-2026-004.pdf
+│           └── SFC-RUH-QTN-2026-004.docx
+└── _backups/                          (Phase 14)
+```
+
+The year and month come from the **quotation date**, never from the clock: a
+quotation dated in January and saved in August files under January (PRD §10).
+The quotation folder and both filenames carry the exact number the application
+issued — never one re-derived from a date or a counter (PRD §5).
+
+### The Advanced Drive Service is required
+
+`appsscript.json` enables it:
+
+```jsonc
+"dependencies": { "enabledAdvancedServices": [
+  { "userSymbol": "Drive", "serviceId": "drive", "version": "v3" }
+] }
+```
+
+It is used for exactly one thing: `Drive.Files.update` with media, which
+replaces a file's CONTENT in place. DriveApp cannot do that at all — it can only
+create another file — and PRD §37 requires that retrying a failed save does not
+produce `SFC-RUH-QTN-2026-004 (1).pdf`. Replacing in place also keeps the file
+id, the URL already shown to the user, and Drive's own revision history.
+
+Enable it in the editor under **Services → Drive API (v3)** if a deployment
+predates this file. Without it, a retry fails with a clear message rather than
+silently duplicating.
+
+### Shared Drive, not My Drive
+
+The archive **should** live in a Google Shared Drive so the documents survive
+staff changes and are not owned by one personal account (§16.2, §26 UR-15).
+That is a deployment decision recorded in Phase 14; the code works either way.
+
+### Nothing is ever made public
+
+Files inherit the archive's permissions. The backend never calls a sharing API,
+never sets `ANYONE_WITH_LINK`, and returns only `webViewLink` — the page a
+person who already has access can open. Tests assert the Drive fake records zero
+sharing calls.
+
+### Payload sizes, measured
+
+Documents travel as base64 in the same `text/plain` POST as every other action
+(a second transport would trigger a CORS preflight Apps Script cannot answer).
+Measured with the real generators against the real letterhead:
+
+| Quotation                 | PDF    | DOCX   | Combined base64 |
+| ------------------------- | ------ | ------ | --------------- |
+| 1 line                    | 519 KB | 629 KB | 1.50 MB         |
+| 30 lines                  | 530 KB | 630 KB | 1.51 MB         |
+| 120 lines                 | 565 KB | 634 KB | 1.56 MB         |
+| 500 lines (the ceiling)   | 708 KB | 646 KB | 1.76 MB         |
+
+Both files are dominated by the letterhead and the seal, so size barely grows
+with line count. The server caps each file at 5 MB and the request at 10 MB —
+comfortable against a ~50 MB practical POST limit.
+
+---
+
 ## Signature images
 
-`DRIVE_ROOT_FOLDER_ID` must be set before the first signature upload. The
-backend creates `_assets/signatures/` under that folder on first use; nothing
-else needs to exist in advance.
-
-```
-Quotation Archive/            ← DRIVE_ROOT_FOLDER_ID
-└── _assets/
-    └── signatures/           ← created automatically, PRIVATE
-```
+`_assets/signatures/` is created on first upload, through the same folder
+resolver the quotation archive uses — one get-or-create utility, so `_assets`
+cannot be duplicated by a second implementation of "look it up, then create it".
 
 **The repository contains no signature file, and never will.** The library ships
 empty. An Admin uploads real signatures through the Authorized Persons page once

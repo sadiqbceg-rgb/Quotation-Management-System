@@ -14,57 +14,21 @@
  * `persons.getSignature` action, which returns base64 to a signed-in caller.
  *
  * Phase 10 owns the per-quotation folder tree. This module creates ONLY the
- * private `_assets/signatures/` folder it needs.
+ * private `_assets/signatures/` folder it needs, through the SAME resolver
+ * Phase 10 uses — one folder utility, so `_assets` cannot end up duplicated by
+ * a second implementation of "look it up, then create it".
  */
 
-import { requireProperty } from '../config/properties';
+import { ASSETS_FOLDER_NAME } from '@shared/drive-paths';
 import { ApiError } from '../errors';
+import { resolveFolderPath } from './folder-resolver';
 
-/** Under the Drive root, beside — not inside — the year folders Phase 10 adds. */
-export const ASSETS_FOLDER_NAME = '_assets';
+export { ASSETS_FOLDER_NAME };
 export const SIGNATURES_FOLDER_NAME = 'signatures';
-
-function rootFolder(): GoogleAppsScript.Drive.Folder {
-  try {
-    return DriveApp.getFolderById(requireProperty('DRIVE_ROOT_FOLDER_ID'));
-  } catch (thrown: unknown) {
-    const message = thrown instanceof Error ? thrown.message : String(thrown);
-    if (message.indexOf('CONFIG_MISSING:') === 0) throw thrown;
-
-    throw new ApiError(
-      'DRIVE_AUTH_FAILED',
-      'The document archive could not be opened. Check the Drive configuration.',
-    );
-  }
-}
-
-/**
- * Get a child folder by name, creating it when absent.
- *
- * Drive permits duplicate names, so an existing folder is always reused rather
- * than a second one created — otherwise a race during setup would silently
- * split signatures across two folders with the same name.
- */
-function childFolder(
-  parent: GoogleAppsScript.Drive.Folder,
-  name: string,
-): GoogleAppsScript.Drive.Folder {
-  const existing = parent.getFoldersByName(name);
-  if (existing.hasNext()) return existing.next();
-
-  try {
-    return parent.createFolder(name);
-  } catch {
-    throw new ApiError(
-      'DRIVE_FOLDER_CREATE_FAILED',
-      'The signature folder could not be created in Google Drive.',
-    );
-  }
-}
 
 /** `Quotation Archive / _assets / signatures /`, created on first use. */
 export function signaturesFolder(): GoogleAppsScript.Drive.Folder {
-  return childFolder(childFolder(rootFolder(), ASSETS_FOLDER_NAME), SIGNATURES_FOLDER_NAME);
+  return resolveFolderPath([ASSETS_FOLDER_NAME, SIGNATURES_FOLDER_NAME]);
 }
 
 export interface StoredSignature {

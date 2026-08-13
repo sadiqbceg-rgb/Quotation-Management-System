@@ -26,6 +26,9 @@ export const ACTION_NAMES = [
   'quotation.list',
   'quotation.updateStatus',
 
+  // Phase 10 — carries the generated PDF and DOCX as base64 in the body.
+  'quotation.uploadToDrive',
+
   // Phase 04
   'items.list',
   'items.create',
