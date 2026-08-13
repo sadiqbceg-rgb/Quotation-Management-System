@@ -487,13 +487,26 @@ per generated document.
 
 ## Flakiness
 
-Three consecutive full runs of the unit suite: **green, green, green**. Two
-consecutive full runs of the E2E suite: **58 passed, 58 passed**. Nothing was
-retried away — `retries: 0` in `playwright.config.ts`, and there is no retry
-setting in the Vitest config either, so an intermittent failure would show as a
+Three consecutive full runs of the unit suite: **green, green, green**. Nothing
+is retried away — `retries: 0` in `playwright.config.ts`, and there is no retry
+setting in the Vitest config either, so an intermittent failure shows as a
 failure.
 
-Two sources of intermittency were found and removed rather than tolerated:
+**One E2E test was genuinely flaky, and the verification run is what caught it.**
+It had passed two full runs before failing a third, which is exactly how this
+kind of defect hides. It was fixed, not retried away:
+
+- `document-generation.spec.ts` › "produces a PDF with no console error and no
+  failed request" watched **every** request the page made, and so also caught
+  the backend POST being cancelled as the page tore down at the end of the test
+  — a race with no bearing on the document. It now watches only ASSET requests
+  (fonts, letterhead, seal, images), which is what the test was ever about: a
+  404 on one of those produces a document that is quietly wrong. Renamed to
+  "…and no missing asset" to say what it checks. Five consecutive runs green
+  since.
+
+Two more sources of intermittency were found and removed while writing the
+suite, before any verification run:
 
 - the E2E specs took the quotation date from the form's default, which is
   **today** — so they asserted `2026/August` in August and would have started

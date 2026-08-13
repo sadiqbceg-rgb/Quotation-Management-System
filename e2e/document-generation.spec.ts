@@ -134,14 +134,34 @@ test('names both downloads after the same quotation number', async ({ page }) =>
   expect(docx.suggestedFilename()).toBe(`${fileSafe}.docx`);
 });
 
-test('produces a PDF with no console error and no failed request', async ({ page }) => {
+test('produces a PDF with no console error and no missing asset', async ({ page }) => {
   const problems: string[] = [];
   page.on('pageerror', (error) => problems.push(error.message));
   page.on('console', (message) => {
     if (message.type() === 'error') problems.push(message.text());
   });
+
+  /*
+   * Only ASSET requests are watched, not every request the page makes.
+   *
+   * What this test is about is a font or the letterhead 404ing at generation
+   * time, which produces a document that is quietly wrong. Watching everything
+   * also caught the backend POST being cancelled as the page tore down at the
+   * end of the test — a race with no bearing on the document, which made this
+   * spec fail about one run in three.
+   *
+   * A genuinely missing asset still fails here, and `loadPdfAssets` refuses
+   * with a typed code besides (`asset-loading.test.ts`).
+   */
+  const ASSET = /\.(ttf|pdf|png|jpe?g|woff2?)(\?|$)/i;
+
   page.on('requestfailed', (request) => {
-    problems.push(`${request.method()} ${request.url()} failed`);
+    if (ASSET.test(request.url())) problems.push(`${request.method()} ${request.url()} failed`);
+  });
+  page.on('response', (response) => {
+    if (response.status() >= 400 && ASSET.test(response.url())) {
+      problems.push(`${String(response.status())} ${response.url()}`);
+    }
   });
 
   await reachPreview(page);
@@ -150,7 +170,5 @@ test('produces a PDF with no console error and no failed request', async ({ page
   await page.getByRole('button', { name: 'Save as PDF' }).click();
   await download;
 
-  // The fonts and the letterhead are fetched over HTTP at generation time; a
-  // 404 on either would produce a document that is quietly wrong.
   expect(problems).toEqual([]);
 });
