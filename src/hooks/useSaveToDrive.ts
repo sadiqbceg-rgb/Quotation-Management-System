@@ -8,6 +8,7 @@ import {
   type DocumentPayload,
   type SaveToDriveResult,
 } from '@/services/google-drive/drive-service';
+import { retryTracking } from '@/services/google-sheets/sheets-service';
 import { DOCUMENT_KINDS, type DocumentKind } from '@shared/drive-paths';
 
 /**
@@ -55,6 +56,12 @@ export interface UseSaveToDriveResult {
   save: (request: SaveToDriveRequest) => Promise<void>;
   /** PRD §37 Retry Upload: same draft, same number, same folder. */
   retry: () => Promise<void>;
+  /**
+   * PRD §37 Retry Tracking: the documents are in Drive, only the register row
+   * failed. Writes the row without re-sending the documents.
+   */
+  retryTracking: () => Promise<void>;
+  isRetryingTracking: boolean;
   reset: () => void;
 }
 
@@ -184,12 +191,44 @@ export function useSaveToDrive(): UseSaveToDriveResult {
     }
   }, [state, upload]);
 
+  const [isRetryingTracking, setRetryingTracking] = useState(false);
+
+  const retryTrackingRow = useCallback(async (): Promise<void> => {
+    if (state.status !== 'saved') return;
+
+    setRetryingTracking(true);
+    try {
+      const result = await retryTracking(draft.current, token.current);
+      setState({
+        status: 'saved',
+        result: { ...state.result, tracking: result.tracking },
+      });
+    } catch (error: unknown) {
+      setState({
+        status: 'saved',
+        result: {
+          ...state.result,
+          tracking: { status: 'failed', message: messageOf(error) },
+        },
+      });
+    } finally {
+      setRetryingTracking(false);
+    }
+  }, [state]);
+
   const reset = useCallback(() => {
     documents.current = {};
     setState({ status: 'idle' });
   }, []);
 
-  return { state, save, retry, reset };
+  return {
+    state,
+    save,
+    retry,
+    retryTracking: retryTrackingRow,
+    isRetryingTracking,
+    reset,
+  };
 }
 
 function codeOf(error: unknown): string {

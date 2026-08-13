@@ -19,6 +19,7 @@
  */
 
 import { callAction } from '@/services/api/client';
+import type { TrackingOutcome } from '@/services/google-sheets/sheets-service';
 import { parseDriveTarget, type DriveTarget } from '@shared/drive-links';
 import { DOCUMENT_KINDS, type DocumentKind } from '@shared/drive-paths';
 import { bytesToBase64 } from '@/utils/base64';
@@ -44,6 +45,13 @@ export interface SaveToDriveResult {
   files: { pdf: DriveTarget | null; docx: DriveTarget | null };
   /** Empty on success; what a Retry Upload must send. */
   missing: DocumentKind[];
+  /**
+   * Whether the tracking row was written (PRD §30 step 13).
+   *
+   * Separate from `outcome`: the two fail independently, and a register that is
+   * behind does not mean the documents are missing.
+   */
+  tracking: TrackingOutcome;
 }
 
 interface RawResult {
@@ -55,6 +63,7 @@ interface RawResult {
   pathLabel?: unknown;
   files?: { pdf?: unknown; docx?: unknown };
   missing?: unknown;
+  tracking?: unknown;
 }
 
 function optionalTarget(value: unknown): DriveTarget | null {
@@ -86,6 +95,27 @@ function parseResult(raw: RawResult): SaveToDriveResult {
       docx: optionalTarget(raw.files?.docx),
     },
     missing,
+    tracking: parseTracking(raw.tracking),
+  };
+}
+
+const TRACKING_STATUSES: readonly string[] = ['recorded', 'failed', 'skipped'];
+
+function parseTracking(value: unknown): TrackingOutcome {
+  if (typeof value !== 'object' || value === null) return { status: 'skipped' };
+
+  const record = value as { status?: unknown; message?: unknown; code?: unknown; disposition?: unknown };
+  const status = TRACKING_STATUSES.includes(record.status as string)
+    ? (record.status as TrackingOutcome['status'])
+    : 'skipped';
+
+  return {
+    status,
+    ...(typeof record.message === 'string' ? { message: record.message } : {}),
+    ...(typeof record.code === 'string' ? { code: record.code } : {}),
+    ...(record.disposition === 'appended' || record.disposition === 'updated'
+      ? { disposition: record.disposition }
+      : {}),
   };
 }
 

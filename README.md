@@ -113,8 +113,8 @@ build and tests green.
 | 07 Quotation Document    | complete          |
 | 08 PDF Generation        | complete          |
 | 09 DOCX Generation       | complete          |
-| **10 Google Drive**      | **complete**      |
-| 11 Google Sheets         | not started       |
+| 10 Google Drive          | complete          |
+| **11 Google Sheets**     | **complete**      |
 | 12 Security              | not started       |
 | 13 Testing               | not started       |
 | 14 Production Deployment | not started       |
@@ -268,6 +268,37 @@ shows the link that does work, and the retry sends only what is missing.
 Every test runs against an in-memory Drive fake. No test can create a folder or
 a file in a real Drive, and development must use a separate root folder from
 production.
+
+---
+
+## Google Sheets tracking
+
+The `Quotations` sheet is the V1 quotation register (PRD §31). A row is written
+automatically on every successful Drive save, and the quotations list in the app
+reads it back — so a Status a colleague changed in the spreadsheet shows up here,
+and a change made here shows up there.
+
+Columns A–H are exactly what the PRD specifies, in its order; I–Q are system
+columns (the Drive links, the server-computed money, and the `Draft ID` that
+makes a re-save update the row instead of adding a second one).
+
+- **Nothing monetary comes from the client.** Every figure is recomputed from
+  the stored line items through the same `calculateTotals` the document uses, so
+  the register and the PDF cannot disagree by a rounding step.
+- **A re-save preserves the Status.** Staff approve and reject in the Sheet;
+  re-issuing a document must not reverse that.
+- **Formula injection is a type error.** `writeRow` accepts only `PreparedCell`,
+  and the only way to get one is through the escaping module — so a client called
+  `=IMPORTXML(…)` cannot reach a cell as a live formula. The one formula the
+  system does write is the Drive Folder hyperlink, from a validated Drive URL.
+- **Uniqueness has three layers**: the counter is the only issuer, a pre-append
+  scan rejects a number already held by another quotation, and a conditional
+  format highlights a duplicate someone pasted in by hand. The scan and the
+  append share one script lock.
+
+A failed register write after a successful upload is a warning, not a failed
+save: the documents are in Drive, and **Retry Tracking** writes the row from the
+archive without re-sending them.
 
 ---
 

@@ -8,17 +8,28 @@
  */
 
 import { QUOTATION_STATUSES, type QuotationStatus } from '@shared/types';
-import { DOCUMENT_KINDS, describeArchivePath, type DocumentKind } from '@shared/drive-paths';
+import {
+  DOCUMENT_KINDS,
+  describeArchivePath,
+  documentFileName,
+  quotationFolderSegments,
+  type DocumentKind,
+} from '@shared/drive-paths';
 import type { DriveTarget } from '@shared/drive-links';
 import { isValidQuotationNumber } from '@shared/numbering';
 import { PATTERNS } from '@shared/validation-rules';
 import { writeAudit } from '../audit/audit-log';
 import { quotationCodes } from '../config/properties';
+import { findByName } from '../drive/file-upload';
+import { resolveFolderPath } from '../drive/folder-resolver';
+import { targetOf } from '../drive/drive-urls';
 import { storeQuotationDocuments } from '../drive/quotation-storage';
 import { ApiError, type Caller, type HandlerContext } from '../errors';
 import { lookupForSnapshot } from '../persons/handlers';
 import { reserveQuotationNumber } from '../quotation-number/reserve';
+import { computeMoney, recordQuotationTracking } from './tracking';
 import * as records from '../sheets/quotation-records-sheet';
+import * as tracking from '../sheets/quotations-sheet';
 import {
   assertCombinedSize,
   validateDocumentUpload,
@@ -211,6 +222,24 @@ export function save(payload: unknown, context: HandlerContext): SaveResponse {
 /* Upload to Drive (PRD §30)                                                  */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Whether the tracking row was written (PRD §30 step 13).
+ *
+ * A separate outcome from the Drive save, because the two fail independently
+ * and PRD §37 treats them differently: a Drive failure means the quotation is
+ * not saved, while a Sheets failure after a successful upload means the
+ * documents ARE safe and only the register is behind. The UI shows a warning
+ * with a retry rather than an error.
+ */
+export interface TrackingOutcome {
+  status: 'recorded' | 'failed' | 'skipped';
+  /** `appended` on a first save, `updated` on a re-save. */
+  disposition?: 'appended' | 'updated';
+  /** Present when `failed`; already a user-facing sentence. */
+  message?: string;
+  code?: string;
+}
+
 export interface UploadToDriveResponse {
   outcome: 'success' | 'partial';
   draftId: string;
@@ -223,6 +252,7 @@ export interface UploadToDriveResponse {
   files: { pdf: DriveTarget | null; docx: DriveTarget | null };
   /** Empty on success. What a Retry Upload must send. */
   missing: DocumentKind[];
+  tracking: TrackingOutcome;
 }
 
 /**
@@ -245,8 +275,8 @@ export interface UploadToDriveResponse {
  * quotation in the archive.
  *
  * PRD §37: on failure the quotation is not marked saved. Nothing here writes a
- * status, and no URL is recorded anywhere — the tracking row is Phase 11's, and
- * it is only reached on `success` (see the integration point below).
+ * status, and no URL is recorded anywhere — the tracking row is written only
+ * on `success`, and a failure to write it never fails the upload.
  */
 export function uploadToDrive(payload: unknown, context: HandlerContext): UploadToDriveResponse {
   const caller = requireCaller(context);
@@ -315,16 +345,32 @@ export function uploadToDrive(payload: unknown, context: HandlerContext): Upload
   });
 
   /*
-   * PHASE 11 INTEGRATION POINT.
+   * PRD §30 step 13 — the tracking row.
    *
-   * On `success`, the tracking row is written here: the quotation number, the
-   * client, the totals, the folder URL and both file URLs. It is deliberately
-   * NOT written on `partial` — a row claiming a document that is not in the
-   * archive is worse than no row at all (§23.2).
+   * Written only on `success`. A row claiming a document that is not in the
+   * archive is worse than no row at all (§23.2), so a `partial` upload is
+   * reported as `skipped` and the register stays untouched until the retry
+   * completes the archive.
    *
-   * Phase 10 stops at returning the URLs; nothing below this comment writes to
-   * the `Quotations` sheet.
+   * A failure here NEVER fails the upload. The documents are in Drive, their
+   * links are real, and telling the user the save failed would send them to
+   * re-upload two megabytes to fix a spreadsheet row.
    */
+  const tracking: TrackingOutcome =
+    result.outcome === 'success'
+      ? recordTrackingRow({
+          record,
+          stored,
+          quotationDate,
+          codes,
+          createdBy: record.createdBy.length > 0 ? record.createdBy : caller.email,
+          folderUrl: result.folder.url,
+          pdfUrl: result.files.pdf.url,
+          docxUrl: result.files.docx.url,
+          requestId: context.requestId,
+          actor: caller.email,
+        })
+      : { status: 'skipped' };
 
   writeAudit({
     actor: caller.email,
@@ -348,7 +394,86 @@ export function uploadToDrive(payload: unknown, context: HandlerContext): Upload
     pathLabel: describeArchivePath(result.path),
     files: result.files,
     missing: result.outcome === 'success' ? [] : result.missing,
+    tracking,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tracking (PRD §30 step 13, §31)                                            */
+/* -------------------------------------------------------------------------- */
+
+interface RecordTrackingArgs {
+  record: records.QuotationRecord;
+  stored: StoredPayload;
+  quotationDate: string;
+  codes: ReturnType<typeof quotationCodes>;
+  createdBy: string;
+  folderUrl: string;
+  pdfUrl: string;
+  docxUrl: string;
+  requestId: string;
+  actor: string;
+}
+
+/**
+ * Write the register row, converting any failure into a reportable outcome.
+ *
+ * Never throws. The caller has already put the documents in Drive; a
+ * spreadsheet problem must surface as a warning with a retry, not as a failed
+ * save (PRD §37).
+ */
+function recordTrackingRow(args: RecordTrackingArgs): TrackingOutcome {
+  try {
+    const recorded = recordQuotationTracking({
+      quotationNumber: args.record.quotationNumber,
+      quotationDate: args.quotationDate,
+      clientName: typeof args.stored.client?.clientName === 'string' ? args.stored.client.clientName : '',
+      companyName:
+        typeof args.stored.client?.companyName === 'string' ? args.stored.client.companyName : '',
+      quotationFor: typeof args.stored.quotationFor === 'string' ? args.stored.quotationFor : '',
+      authorizedPerson:
+        typeof args.stored.authorizedPerson?.name === 'string'
+          ? args.stored.authorizedPerson.name
+          : '',
+      // Recomputed from the stored lines, never taken from the request.
+      money: computeMoney(args.stored),
+      driveFolderUrl: args.folderUrl,
+      pdfUrl: args.pdfUrl,
+      docxUrl: args.docxUrl,
+      createdBy: args.createdBy,
+      draftId: args.record.draftId,
+      codes: args.codes,
+    });
+
+    writeAudit({
+      actor: args.actor,
+      action: 'quotation.tracking',
+      target: `${args.record.quotationNumber} ${recorded.disposition}`,
+      outcome: 'success',
+      requestId: args.requestId,
+    });
+
+    return { status: 'recorded', disposition: recorded.disposition };
+  } catch (thrown: unknown) {
+    const code = thrown instanceof ApiError ? thrown.code : 'SHEETS_WRITE_FAILED';
+
+    writeAudit({
+      actor: args.actor,
+      action: 'quotation.tracking',
+      target: `${args.record.quotationNumber} ${code}`,
+      outcome: 'failure',
+      requestId: args.requestId,
+    });
+
+    return {
+      status: 'failed',
+      code,
+      message:
+        thrown instanceof ApiError
+          ? thrown.message
+          : 'The documents were saved to Google Drive, but quotation tracking was not updated.',
+    };
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -362,18 +487,29 @@ export interface QuotationSummary {
   quotationFor: string;
   clientName: string;
   companyName: string;
+  /** Halalas. The register stores SAR, so a tracked row is converted back. */
   grandTotal: number;
   status: QuotationStatus;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  /** The archive folder, when the quotation has been saved to Drive. */
+  driveFolderUrl: string;
+  pdfUrl: string;
+  docxUrl: string;
+  /** True when the quotation has a row in the tracking register (PRD §31). */
+  tracked: boolean;
 }
 
 interface StoredPayload {
   quotationDate?: unknown;
   quotationFor?: unknown;
   client?: { clientName?: unknown; companyName?: unknown };
+  authorizedPerson?: { name?: unknown } | null;
   totals?: { grandTotal?: unknown };
+  lines?: unknown;
+  discountRateBasisPoints?: unknown;
+  vatRateBasisPoints?: unknown;
 }
 
 function parsePayload(payload: string): StoredPayload {
@@ -402,12 +538,69 @@ function summarise(record: records.QuotationRecord): QuotationSummary {
     createdBy: record.createdBy,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    driveFolderUrl: '',
+    pdfUrl: '',
+    docxUrl: '',
+    tracked: false,
   };
 }
 
+/** A register row, as the list sees it. */
+function fromTrackingRow(row: tracking.QuotationRow): QuotationSummary {
+  return {
+    draftId: row.draftId,
+    quotationNumber: row.quotationNumber,
+    // Back to ISO for the client, which formats dates in one place.
+    quotationDate: fromSheetDate(row.date),
+    quotationFor: row.quotationFor,
+    clientName: row.clientName,
+    companyName: row.companyName,
+    grandTotal: Math.round(row.totalAmount * 100),
+    status: row.status,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    driveFolderUrl: row.driveFolderUrl,
+    pdfUrl: row.pdfUrl,
+    docxUrl: row.docxUrl,
+    tracked: true,
+  };
+}
+
+/** `11-08-2026` → `2026-08-11`. The inverse of `toSheetDate`. */
+function fromSheetDate(value: string): string {
+  const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(value.trim());
+  if (match === null) return value.trim();
+
+  const [, day = '', month = '', year = ''] = match;
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * The quotation register.
+ *
+ * The tracking sheet is AUTHORITATIVE for anything that has been saved to
+ * Drive: staff edit Status there by hand (§17.5), and a list that read status
+ * from anywhere else would show a quotation as Pending after someone had
+ * approved it.
+ *
+ * Drafts have no register row — they have no number yet — so they come from
+ * `QuotationRecords`. Dropping them would leave a user unable to find the
+ * quotation they were halfway through writing.
+ */
 export function list(_payload: unknown, context: HandlerContext): QuotationSummary[] {
   requireCaller(context);
-  return records.listAll().map(summarise);
+
+  const tracked = tracking.listQuotationRows();
+  const byDraftId = new Set(tracked.map((row) => row.draftId).filter((id) => id.length > 0));
+  const byNumber = new Set(tracked.map((row) => row.quotationNumber));
+
+  const untracked = records
+    .listAll()
+    .filter((record) => !byDraftId.has(record.draftId) && !byNumber.has(record.quotationNumber))
+    .map(summarise);
+
+  return [...tracked.map(fromTrackingRow), ...untracked];
 }
 
 export interface GetResponse {
@@ -416,6 +609,11 @@ export interface GetResponse {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  /** The archive links, when the quotation has been saved to Drive. */
+  driveFolderUrl: string;
+  pdfUrl: string;
+  docxUrl: string;
+  tracked: boolean;
 }
 
 export function get(payload: unknown, context: HandlerContext): GetResponse {
@@ -434,12 +632,25 @@ export function get(payload: unknown, context: HandlerContext): GetResponse {
     throw new ApiError('VALIDATION_FAILED', 'That quotation could not be found.');
   }
 
+  /*
+   * Status comes from the REGISTER when a row exists. Staff approve and reject
+   * in the Sheet (§17.5), so the record's own copy is a stale snapshot the
+   * moment someone does.
+   */
+  const row =
+    tracking.findByDraftId(record.draftId) ??
+    tracking.findByQuotationNumber(record.quotationNumber);
+
   return {
     quotation: parsePayload(record.payload),
-    status: record.status,
+    status: row?.status ?? record.status,
     createdBy: record.createdBy,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    driveFolderUrl: row?.driveFolderUrl ?? '',
+    pdfUrl: row?.pdfUrl ?? '',
+    docxUrl: row?.docxUrl ?? '',
+    tracked: row !== null,
   };
 }
 
@@ -450,7 +661,7 @@ export function get(payload: unknown, context: HandlerContext): GetResponse {
 export function updateStatus(
   payload: unknown,
   context: HandlerContext,
-): { quotationNumber: string; status: QuotationStatus } {
+): { quotationNumber: string; status: QuotationStatus; tracked: boolean } {
   const caller = requireCaller(context);
   const body = asRecord(payload);
 
@@ -472,15 +683,143 @@ export function updateStatus(
   }
 
   const status = statusText as QuotationStatus;
+
+  /*
+   * Both stores. The register is what staff read (PRD §31) and what `list`
+   * returns; `QuotationRecords` keeps its own copy so a quotation that has not
+   * reached Drive yet still has a status. Writing only one leaves the two
+   * disagreeing about a commercial decision.
+   */
+  const row = tracking.setRowStatus(quotationNumber, status);
   records.setStatus(record, status);
 
   writeAudit({
     actor: caller.email,
     action: 'quotation.updateStatus',
-    target: `${quotationNumber}:${status}`,
+    target: `${quotationNumber}:${status}${row === null ? ' (not in register)' : ''}`,
     outcome: 'success',
     requestId: context.requestId,
   });
 
-  return { quotationNumber, status };
+  return { quotationNumber, status, tracked: row !== null };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Retry tracking (PRD §37)                                                   */
+/* -------------------------------------------------------------------------- */
+
+export interface RecordTrackingResponse {
+  draftId: string;
+  quotationNumber: string;
+  tracking: TrackingOutcome;
+}
+
+/**
+ * Write the register row for a quotation whose documents are already in Drive.
+ *
+ * The retry behind the "tracking was not updated" warning. It re-reads the
+ * archive rather than trusting the client for the URLs, and it costs nothing
+ * near the two megabytes a document re-upload would — which is the entire point
+ * of separating it from `uploadToDrive`.
+ *
+ * Idempotent: `upsertQuotationRow` locates the row by `Draft ID`, so pressing
+ * Retry twice updates one row rather than appending a second.
+ */
+export function recordTracking(
+  payload: unknown,
+  context: HandlerContext,
+): RecordTrackingResponse {
+  const caller = requireCaller(context);
+  const body = asRecord(payload);
+
+  const draftId = readString(body, 'draftId');
+  if (draftId.length === 0 || draftId.length > 64) {
+    throw new ApiError('VALIDATION_FAILED', 'A valid draft identifier is required.');
+  }
+
+  const record = records.findByDraftId(draftId);
+  if (record === null) {
+    throw new ApiError('VALIDATION_FAILED', 'That quotation could not be found.');
+  }
+
+  const codes = quotationCodes();
+  if (!isValidQuotationNumber(record.quotationNumber, codes)) {
+    throw new ApiError(
+      'VALIDATION_FAILED',
+      'This quotation has no number yet, so it cannot be tracked.',
+    );
+  }
+
+  const stored = parsePayload(record.payload);
+  const quotationDate = typeof stored.quotationDate === 'string' ? stored.quotationDate : '';
+
+  if (!PATTERNS.isoDate.test(quotationDate)) {
+    throw new ApiError('VALIDATION_FAILED', 'This quotation has no valid date.');
+  }
+
+  // Read the archive back. Both documents must be there: a register row that
+  // links to a half-filed quotation is the inconsistency §23.2 forbids.
+  const archived = findArchivedDocuments(record.quotationNumber, quotationDate, codes);
+
+  if (archived === null) {
+    throw new ApiError(
+      'VALIDATION_FAILED',
+      'The documents are not in Google Drive yet. Save the quotation to Drive first.',
+    );
+  }
+
+  const outcome = recordTrackingRow({
+    record,
+    stored,
+    quotationDate,
+    codes,
+    createdBy: record.createdBy.length > 0 ? record.createdBy : caller.email,
+    folderUrl: archived.folderUrl,
+    pdfUrl: archived.pdfUrl,
+    docxUrl: archived.docxUrl,
+    requestId: context.requestId,
+    actor: caller.email,
+  });
+
+  if (outcome.status === 'failed') {
+    throw new ApiError(
+      'SHEETS_WRITE_FAILED',
+      outcome.message ??
+        'The documents were saved to Google Drive, but quotation tracking was not updated.',
+    );
+  }
+
+  return { draftId, quotationNumber: record.quotationNumber, tracking: outcome };
+}
+
+interface ArchivedDocuments {
+  folderUrl: string;
+  pdfUrl: string;
+  docxUrl: string;
+}
+
+/**
+ * The archive's own view of a quotation.
+ *
+ * Read-only use of the Phase 10 modules. Folder resolution is get-or-create and
+ * idempotent, so calling it here cannot create anything that was not going to
+ * exist anyway.
+ */
+function findArchivedDocuments(
+  quotationNumber: string,
+  quotationDate: string,
+  codes: ReturnType<typeof quotationCodes>,
+): ArchivedDocuments | null {
+  const folder = resolveFolderPath(quotationFolderSegments(quotationDate, quotationNumber, codes));
+
+  const pdf = findByName(folder, documentFileName(quotationNumber, 'pdf', codes));
+  const docx = findByName(folder, documentFileName(quotationNumber, 'docx', codes));
+
+  if (pdf === null || docx === null) return null;
+
+  return {
+    folderUrl: targetOf(folder).url,
+    pdfUrl: targetOf(pdf).url,
+    docxUrl: targetOf(docx).url,
+  };
 }

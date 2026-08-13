@@ -15,6 +15,7 @@ import { useSaveToDrive } from '@/hooks/useSaveToDrive';
 import { RetryUpload } from '@/components/quotation/RetryUpload';
 import { SaveProgress } from '@/components/quotation/SaveProgress';
 import { SaveResult } from '@/components/quotation/SaveResult';
+import { SheetsSyncWarning } from '@/components/quotation/SheetsSyncWarning';
 import { AppError, messageOf } from '@/services/api/errors';
 import { getQuotationByDraftId } from '@/services/quotation/quotation-service';
 import { fetchSignature } from '@/services/signatories/signatory-service';
@@ -300,8 +301,17 @@ export default function QuotationPreviewPage() {
           ) : null}
 
           {drive.state.status === 'saved' ? (
-            <div className="print-hide">
+            <div className="print-hide flex flex-col gap-4">
               <SaveResult result={drive.state.result} />
+              {/* The documents are filed; only the register write failed. */}
+              <SheetsSyncWarning
+                tracking={drive.state.result.tracking}
+                requestId={undefined}
+                isRetrying={drive.isRetryingTracking}
+                onRetry={() => {
+                  void drive.retryTracking();
+                }}
+              />
             </div>
           ) : null}
 

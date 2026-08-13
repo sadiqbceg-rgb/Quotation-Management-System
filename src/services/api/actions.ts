@@ -29,6 +29,10 @@ export const ACTION_NAMES = [
   // Phase 10 — carries the generated PDF and DOCX as base64 in the body.
   'quotation.uploadToDrive',
 
+  // Phase 11 — writes the tracking row when the Drive save succeeded but the
+  // register write did not. Sends only the draft id; no documents.
+  'quotation.recordTracking',
+
   // Phase 04
   'items.list',
   'items.create',

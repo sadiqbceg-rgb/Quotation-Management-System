@@ -177,6 +177,13 @@ export function createCacheFake(startSeconds = 0): CacheFake {
 export interface SheetFake {
   name: string;
   rows: unknown[][];
+  /** Number formats applied, as `column:format`. */
+  numberFormats: string[];
+  /** The allowed values of the data validation on a column, by column number. */
+  validations: Map<number, string[]>;
+  /** Conditional format rules, as their formulas. */
+  conditionalRules: string[];
+  frozenRows: number;
 }
 
 export interface SpreadsheetFake {
@@ -184,6 +191,8 @@ export interface SpreadsheetFake {
   sheets: Map<string, SheetFake>;
   /** Rows of a sheet excluding the header, for assertions. */
   dataRows: (name: string) => unknown[][];
+  /** A sheet's recorded formatting, for assertions. */
+  formatting: (name: string) => SheetFake | undefined;
 }
 
 export function createSpreadsheetFake(): SpreadsheetFake {
@@ -194,7 +203,19 @@ export function createSpreadsheetFake(): SpreadsheetFake {
       getLastRow: (): number => sheet.rows.length,
       getLastColumn: (): number =>
         sheet.rows.reduce((widest, row) => Math.max(widest, row.length), 0),
-      setFrozenRows: (): void => undefined,
+      getMaxRows: (): number => Math.max(sheet.rows.length, 1_000),
+      setFrozenRows: (rows: number): void => {
+        sheet.frozenRows = rows;
+      },
+      getConditionalFormatRules: (): unknown[] =>
+        sheet.conditionalRules.map((formula) => ({ formula })),
+      setConditionalFormatRules: (rules: unknown[]): void => {
+        sheet.conditionalRules = rules.map((rule) =>
+          typeof rule === 'object' && rule !== null && 'formula' in rule
+            ? String(rule.formula)
+            : '',
+        );
+      },
       appendRow: (values: unknown[]): void => {
         sheet.rows.push(values.slice());
       },
@@ -225,6 +246,18 @@ export function createSpreadsheetFake(): SpreadsheetFake {
           target[column - 1] = value;
           sheet.rows[row - 1] = target;
         },
+        setNumberFormat: (format: string): void => {
+          sheet.numberFormats.push(`${String(column)}:${format}`);
+        },
+        setHorizontalAlignment: (): void => undefined,
+        setFontWeight: (): void => undefined,
+        setDataValidation: (rule: unknown): void => {
+          const values =
+            typeof rule === 'object' && rule !== null && 'values' in rule
+              ? (rule.values as string[])
+              : [];
+          sheet.validations.set(column, values);
+        },
       }),
     };
   }
@@ -233,7 +266,14 @@ export function createSpreadsheetFake(): SpreadsheetFake {
     getSheetByName: (name: string): unknown =>
       sheets.has(name) ? buildSheet(sheets.get(name)!) : null,
     insertSheet: (name: string): unknown => {
-      const sheet: SheetFake = { name, rows: [] };
+      const sheet: SheetFake = {
+        name,
+        rows: [],
+        numberFormats: [],
+        validations: new Map<number, string[]>(),
+        conditionalRules: [],
+        frozenRows: 0,
+      };
       sheets.set(name, sheet);
       return buildSheet(sheet);
     },
@@ -243,6 +283,7 @@ export function createSpreadsheetFake(): SpreadsheetFake {
     service: { openById: () => spreadsheet },
     sheets,
     dataRows: (name: string) => (sheets.get(name)?.rows ?? []).slice(1),
+    formatting: (name: string) => sheets.get(name),
   };
 }
 
@@ -647,6 +688,36 @@ export function installGasFakes(
     ...spreadsheetFake.service,
     flush: () => {
       lockFake.recordFlush();
+    },
+    /*
+     * The builders the tracking sheet's formatting uses. They record intent
+     * rather than implementing it: what a test needs to know is that the Status
+     * column offers exactly three values, not how Sheets renders a dropdown.
+     */
+    newDataValidation: () => {
+      let values: string[] = [];
+      const builder = {
+        requireValueInList: (list: string[]): unknown => {
+          values = [...list];
+          return builder;
+        },
+        setAllowInvalid: (): unknown => builder,
+        build: (): unknown => ({ values }),
+      };
+      return builder;
+    },
+    newConditionalFormatRule: () => {
+      let formula = '';
+      const builder = {
+        whenFormulaSatisfied: (value: string): unknown => {
+          formula = value;
+          return builder;
+        },
+        setBackground: (): unknown => builder,
+        setRanges: (): unknown => builder,
+        build: (): unknown => ({ formula }),
+      };
+      return builder;
     },
   });
   stub('console', { ...console, error: () => undefined, log: () => undefined });

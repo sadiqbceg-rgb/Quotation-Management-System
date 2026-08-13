@@ -131,6 +131,12 @@ export const ACTIONS: Record<string, ActionDefinition> = {
     access: 'authenticated',
     handler: quotation.uploadToDrive,
   },
+  // The retry behind "tracking was not updated" (PRD §37). Separate from the
+  // upload so fixing a spreadsheet row does not re-send two megabytes.
+  'quotation.recordTracking': {
+    access: 'authenticated',
+    handler: quotation.recordTracking,
+  },
 
   'items.list': {
     access: 'authenticated',

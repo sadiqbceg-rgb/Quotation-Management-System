@@ -12,6 +12,7 @@
 
 import { escapeForSheet, unescapeFromSheet } from '@shared/validation-rules';
 import { requireProperty } from '../config/properties';
+import type { PreparedCell } from './cell-escaping';
 
 export type CellValue = string | number | boolean;
 
@@ -75,6 +76,30 @@ export function setCell(
 ): void {
   const safe = typeof value === 'string' ? escapeForSheet(value) : value;
   sheet.getRange(rowNumber, columnNumber).setValue(safe);
+}
+
+/**
+ * Write a whole row in ONE call.
+ *
+ * Two reasons this exists rather than a loop of `setCell`:
+ *
+ * 1. **Atomicity.** A partially written row — a quotation number with no total,
+ *    or a Drive link pointing at a folder whose row says nothing else — is
+ *    worse than no row. One `setValues` cannot half-succeed.
+ * 2. **Cost.** Apps Script charges a host round trip per call; seventeen of
+ *    them per save is how an execution budget disappears.
+ *
+ * It takes `PreparedCell` and nothing else, so every value has provably been
+ * through `cell-escaping`. That is what stops a client name reaching a cell as
+ * a live formula (§19.5) — the compiler enforces it, not a convention.
+ */
+export function writeRow(
+  sheet: GoogleAppsScript.Spreadsheet.Sheet,
+  rowNumber: number,
+  cells: readonly PreparedCell[],
+): void {
+  if (cells.length === 0) return;
+  sheet.getRange(rowNumber, 1, 1, cells.length).setValues([cells.slice()]);
 }
 
 export interface FoundRow {
