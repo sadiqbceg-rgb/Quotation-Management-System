@@ -269,7 +269,7 @@ describe('create', () => {
   it('strips control characters from the body', () => {
     const created = call('terms.create', {
       title: 'TEST_ONLY Control',
-      bodyTemplate: 'clean bodytext',
+      bodyTemplate: 'clean\u0000body\u0007text',
     }).data as PublicTerm;
 
     expect(created.bodyTemplate).toBe('cleanbodytext');
