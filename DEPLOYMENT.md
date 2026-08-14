@@ -424,22 +424,37 @@ Three things are open, and two of them are the company's to answer. They do not
 block _deploying_; they block the system producing a complete, correct
 quotation.
 
-1. **UR-01 — the filename ordering.** The canonical number is
-   `SFC/RUH/QTN/YYYY/###`, read directly off the approved document and mandated
-   by the brief. The file-safe slug used for Drive folder and file names is
-   `SFC-RUH-QTN-YYYY-###`; PRD §5/§28 write the components in a different order,
-   `SFC-QTN-RUH-…`. **This must be settled before the first production
-   quotation**, because renaming issued documents afterwards means every link
-   already sent to a client breaks.
+1. **UR-01 — the filename ordering — is SETTLED.** ✅ No action remains.
+
+   |                               | Form                                               |
+   | ----------------------------- | -------------------------------------------------- |
+   | Canonical business identifier | `SFC/RUH/QTN/YYYY/###`                             |
+   | File-safe slug                | `SFC-RUH-QTN-YYYY-NNN`                             |
+   | Ordering                      | Company · Branch · Document Type · Year · Sequence |
+
+   The company has confirmed the hyphen ordering as
+   `SFC-RUH-QTN-YYYY-NNN`, which is what `toFileSafe` already produced — the
+   slug is a mechanical `/`→`-` transform of the canonical number, so the two
+   cannot disagree and there is no second ordering to maintain.
+
+   PRD §5/§28 write `SFC-QTN-RUH-…`, transposing branch and document type. **That
+   ordering is superseded and must not be reintroduced**; `shared/numbering.test.ts`
+   asserts against it by name, because reintroducing it would rename every
+   document already issued and break every Drive link already sent.
 
 2. **Content the company still owes.**
-   - **The signature images.** None exist in this repository. An authorized
-     person without one produces a quotation with no signature.
-   - **The wording for four PRD §20 terms** — Mobilization, Manpower
-     Replacement, Project Specific Terms, and Transportation as a standalone
-     term. They have no counterpart in the reference document and are
-     deliberately _not_ invented (`import-reference-terms.ts`). An Admin adds
-     them through the normal create flow when the company supplies the text.
+   - **The signature images.** None exist in this repository and none may be
+     added to it. An authorized person without one is listed but **not
+     selectable**, so a quotation cannot go out silently unsigned. `RUNBOOK.md`
+     §5.4 carries the exact file requirements.
+   - **Approval of the four PRD §20 draft terms.** The company has now supplied
+     wording for Mobilization, Manpower Replacement, Project Specific Terms and
+     Transportation. It is transcribed verbatim into `COMPANY_DRAFT_TERMS`
+     (`import-reference-terms.ts`), kept separate from the approved
+     `REFERENCE_TERMS`, and imported by the same Admin-invoked action. **These
+     are drafts: nobody has confirmed they have been through legal review.** An
+     Admin must read them in the Terms library and have them approved before a
+     quotation carrying one is sent — `RUNBOOK.md` §5.3.
    - **The closing paragraph** is already seeded verbatim from page 2 of the
      approved quotation, so this one is not a blocker — but PRD §23 defers the
      final wording to the company, and it is editable per quotation and as a

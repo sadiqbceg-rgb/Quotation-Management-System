@@ -30,10 +30,11 @@
  * only terms whose title is not already present, and never modifies an existing
  * row (PRD §21: "Do not automatically modify existing terms").
  *
- * The four PRD §20 checkbox labels with no counterpart in the reference
- * document — Mobilization, Manpower Replacement, Project Specific Terms, and
- * Transportation as a standalone term — are NOT invented here. The company
- * supplies their wording through the normal create flow.
+ * The four PRD §20 labels with no counterpart in the reference document —
+ * Mobilization, Manpower Replacement, Project Specific Terms and Transportation
+ * — are still not invented here. The company has now supplied their wording, and
+ * it is transcribed verbatim into COMPANY_DRAFT_TERMS below, kept separate
+ * because it is DRAFT rather than approved content.
  */
 
 import type { TermCategory } from '../sheets/terms-sheet';
@@ -113,6 +114,67 @@ export const REFERENCE_TERMS: readonly ReferenceTerm[] = [
   },
 ];
 
+/**
+ * The four PRD §20 terms with no counterpart in the reference document.
+ *
+ * ---------------------------------------------------------------------------
+ * THESE ARE COMPANY DRAFTS. THEY ARE NOT LEGALLY APPROVED.
+ * ---------------------------------------------------------------------------
+ * PRD §20 lists Mobilization, Manpower Replacement, Project Specific Terms and
+ * Transportation as selectable terms, but `reference/existing-terms.docx` — the
+ * company's approved "General Terms & Conditions" — contains none of them. Until
+ * now they had no wording at all and this file said so.
+ *
+ * The company has since supplied the wording below. It is transcribed verbatim
+ * and **marked DRAFT**: unlike REFERENCE_TERMS above, it is not a transcription
+ * of an approved document, and nobody has confirmed it has been through legal
+ * review.
+ *
+ * That distinction is kept in the code rather than only in a document because
+ * these appear on a quotation the company is contractually bound by. An Admin
+ * must read them in the Terms library and confirm them with whoever owns the
+ * company's terms before a quotation carrying one is sent. `RUNBOOK.md` §5.3
+ * carries that step.
+ *
+ * They are imported by the same Admin-invoked, idempotent import as the
+ * approved terms — nothing here seeds itself, and an Admin may edit or
+ * deactivate any of them afterwards through the normal library flow.
+ */
+export const COMPANY_DRAFT_TERMS: readonly ReferenceTerm[] = [
+  {
+    title: 'Mobilization',
+    bodyTemplate:
+      'Mobilization costs, resources, equipment and personnel required to commence the services shall be arranged in accordance with the agreed project schedule. Any additional mobilization requirements arising from changes to the project scope, location or schedule may be subject to additional charges upon prior approval.',
+    category: 'General',
+  },
+  {
+    title: 'Manpower Replacement',
+    bodyTemplate:
+      'The company reserves the right to replace assigned manpower when required due to operational requirements, performance, availability, leave, resignation or other circumstances. Replacement personnel will be provided with qualifications and experience appropriate to the agreed position and project requirements.',
+    category: 'Manpower',
+  },
+  {
+    title: 'Project Specific Terms',
+    bodyTemplate:
+      'Services shall be performed in accordance with the agreed quotation, project scope, specifications and applicable site requirements. Any work, materials, manpower or services outside the agreed scope shall require prior approval and may be subject to additional charges.',
+    category: 'General',
+  },
+  {
+    title: 'Transportation',
+    bodyTemplate:
+      'Transportation requirements related to the agreed scope of work shall be provided as specified in the quotation. Any transportation requirements outside the agreed scope, including additional trips, locations or schedule changes, may be subject to additional charges upon prior approval.',
+    category: 'General',
+  },
+];
+
+/**
+ * Everything the import inserts: the approved terms, then the drafts.
+ *
+ * Order matters only for `sortOrder`, and the approved terms come first so the
+ * library reads in the order of the company's own document.
+ */
+const ALL_IMPORTABLE_TERMS: readonly ReferenceTerm[] = [...REFERENCE_TERMS, ...COMPANY_DRAFT_TERMS];
+
 export interface ImportResult {
   imported: number;
   skipped: number;
@@ -129,7 +191,7 @@ export function importReferenceTerms(actor: string): ImportResult {
   let skipped = 0;
   let sortOrder = terms.nextSortOrder();
 
-  for (const term of REFERENCE_TERMS) {
+  for (const term of ALL_IMPORTABLE_TERMS) {
     if (terms.titleExists(term.title)) {
       skipped += 1;
       continue;
@@ -148,5 +210,5 @@ export function importReferenceTerms(actor: string): ImportResult {
     imported += 1;
   }
 
-  return { imported, skipped, total: REFERENCE_TERMS.length };
+  return { imported, skipped, total: ALL_IMPORTABLE_TERMS.length };
 }

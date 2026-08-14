@@ -94,10 +94,12 @@ Then confirm it is _that_ number, unchanged, in each of these:
 | The DOCX filename        | `SFC-RUH-QTN-YYYY-NNN.docx` | ☐   |
 
 The slash form is the business identifier; the hyphen form is the same number,
-mechanically transformed because Drive cannot hold `/` in a name. **See
-`DEPLOYMENT.md` §8: the component ORDER of the hyphen form (UR-01) must be
-settled before the first production quotation** — after that, changing it
-renames documents whose links have already been sent.
+mechanically transformed because Drive cannot hold `/` in a name.
+
+**The ordering is settled (UR-01): Company · Branch · Document Type · Year ·
+Sequence — `SFC-RUH-QTN-YYYY-NNN`.** If you see `SFC-QTN-RUH-…` anywhere, stop:
+that is the superseded PRD §5/§28 ordering, and shipping it would rename every
+document already issued and break every Drive link already sent.
 
 ### Document fidelity
 

@@ -20,6 +20,31 @@ function chromiumLaunchOptions(): { executablePath?: string } {
 }
 
 /**
+ * The address the dev server binds to, and the one the tests ask for.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS A CONSTANT AND WHY IT IS AN IP, NOT `localhost`
+ * ---------------------------------------------------------------------------
+ * Vite's dev server binds to `localhost` unless told otherwise, and Node ≥ 17
+ * resolves names in `verbatim` order — whatever `/etc/hosts` lists first.
+ *
+ * On this machine `/etc/hosts` has only `127.0.0.1 localhost`, so Vite binds
+ * IPv4 and everything agrees. A GitHub Actions runner also maps `::1 localhost`,
+ * so there Vite binds `[::1]:5174` while Playwright polls `127.0.0.1:5174` —
+ * refused, forever, until `Timed out waiting 120000ms from config.webServer`.
+ * The server is healthy the whole time; nothing is listening at the address
+ * being asked about.
+ *
+ * Passing `--host` explicitly removes the resolver from the question: the
+ * address Vite binds and the address Playwright polls are the same string,
+ * derived here once so the command, the probe URL and `baseURL` cannot drift
+ * apart again.
+ */
+const HOST = '127.0.0.1';
+const PORT = 5174;
+const ORIGIN = `http://${HOST}:${String(PORT)}`;
+
+/**
  * Browser tests.
  *
  * Deliberately narrow: only what a browser can prove and Node cannot. The
@@ -36,10 +61,22 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: process.env['CI'] !== undefined,
   retries: 0,
-  reporter: process.env['CI'] !== undefined ? 'line' : 'list',
+
+  /*
+   * `line` keeps the CI log short; `html` gives the failure something to upload.
+   *
+   * The workflow has always had an "upload the Playwright report" step, and it
+   * has always warned "No files were found with the provided path" — because
+   * `line` alone writes no report. A failure in CI was therefore inspectable
+   * only through whatever survived in the log.
+   *
+   * `open: 'never'` matters: the default would try to open a browser on the
+   * runner and hang the job after the tests have already finished.
+   */
+  reporter: process.env['CI'] !== undefined ? [['line'], ['html', { open: 'never' }]] : [['list']],
 
   use: {
-    baseURL: 'http://127.0.0.1:5174',
+    baseURL: ORIGIN,
     trace: 'off',
   },
 
@@ -67,10 +104,23 @@ export default defineConfig({
    * a test artefact and must never be an entry point of a real build.
    */
   webServer: {
-    command: 'npx vite --port 5174 --strictPort',
-    url: 'http://127.0.0.1:5174/e2e/pdf-harness.html',
+    // `--host` is not optional here — see the note on HOST above.
+    command: `npx vite --host ${HOST} --port ${String(PORT)} --strictPort`,
+    url: `${ORIGIN}/e2e/pdf-harness.html`,
     reuseExistingServer: process.env['CI'] === undefined,
     timeout: 120_000,
+
+    /*
+     * Show the server's own output.
+     *
+     * The default is to discard it, which is why the CI failure above arrived
+     * as a bare 120-second timeout with not one line from Vite — the banner
+     * naming the address it had actually bound would have identified the
+     * mismatch immediately. A server whose startup cannot be read is a server
+     * whose failures are guesswork.
+     */
+    stdout: 'pipe',
+    stderr: 'pipe',
     /*
      * The endpoint the built app is pointed at for the journey specs.
      *

@@ -127,6 +127,27 @@ describe('toFileSafe', () => {
     expect(fileSafe).toMatch(/^[A-Z0-9-]+$/);
     expect(fileSafe).not.toContain('/');
   });
+
+  it('orders the components Company-Branch-DocType-Year-Sequence (UR-01, settled)', () => {
+    /*
+     * The ordering is FINAL and this test is what holds it.
+     *
+     * PRD §5/§28 write the components as `SFC-QTN-RUH-…` — document type and
+     * branch transposed. That ordering is superseded. Reintroducing it would
+     * rename every document already issued, breaking every Drive link that has
+     * been sent to a client, so the wrong form is asserted against by name
+     * rather than merely left untested.
+     */
+    expect(toFileSafe('SFC/RUH/QTN/2026/003').split('-')).toEqual([
+      'SFC', // company
+      'RUH', // branch
+      'QTN', // document type
+      '2026', // year
+      '003', // sequence
+    ]);
+
+    expect(toFileSafe('SFC/RUH/QTN/2026/003')).not.toBe('SFC-QTN-RUH-2026-003');
+  });
 });
 
 describe('createQuotationNumber', () => {

@@ -9,10 +9,10 @@ what you do, in order, with your hands.
 > been created, no secret has been generated. Sections 1–5 are a one-time setup
 > somebody performs deliberately.
 
-**Read before starting §1:** `DEPLOYMENT.md` §8 lists what is still open. In
-particular, **UR-01 — the filename ordering — must be settled before the first
-production quotation is issued**, because renaming issued documents afterwards
-breaks every link already sent to a client.
+**Read before starting §1:** `DEPLOYMENT.md` §8 lists what is still open.
+UR-01 — the filename ordering — is **settled**: `SFC-RUH-QTN-YYYY-NNN`, which is
+what the code already produces. What remains open is the review of the four
+draft terms (§5.3) and the real signature images (§5.4).
 
 ---
 
@@ -23,10 +23,15 @@ breaks every link already sent to a client.
 | **Setup**      | §1 Drive · §2 Sheets · §3 Secrets and deployment · §4 Backups · §5 First accounts and content                                                                            |
 | **Operations** | §6 Weekly review · §7 Restore · §8 Rollback and its rehearsal                                                                                                            |
 | **Incidents**  | §9.1 Endpoint down · §9.2 Drive quota · §9.3 Script quota · §9.4 Corrupted spreadsheet · §9.5 Duplicate number · §9.6 Locked-out user · §9.7 Suspected secret compromise |
-| **Record**     | §10 The deployment log                                                                                                                                                   |
+| **Record**     | §10 The deployment log · §11 Development setup checklist                                                                                                                 |
 
 Do §1 and §2 **twice** — once for development, once for production — with
 different resources each time. The isolation is the point (`DEPLOYMENT.md` §2.4).
+
+**Start with development.** §11 is the same steps reduced to the shortest path
+to a working development deployment, and it is where to begin: every procedure
+here should have been performed once against development before it is performed
+against the company's live data.
 
 ---
 
@@ -245,19 +250,55 @@ YYYY-MM-DD` exists and opens. A backup nobody has ever restored is not a backup.
    generated, delivered out of band, one account per person. Shared accounts
    make the audit log useless.
 
-3. **Import the reference terms.** As an Admin, run the terms import once. It
-   inserts only terms whose title is not already present and never modifies an
-   existing row, so running it twice is safe.
+3. **Import the terms.** As an Admin, run the terms import once. It inserts
+   **15 terms** and only those whose title is not already present, and never
+   modifies an existing row, so running it twice is safe.
 
-   It does **not** create the four PRD §20 terms with no wording in the
-   reference document — Mobilization, Manpower Replacement, Project Specific
-   Terms, and Transportation as a standalone term. Add those through the normal
-   create flow **when the company supplies the text**. Do not invent wording:
-   these appear on a document the company is bound by.
+   Two different kinds of content arrive in that one import, and the difference
+   matters:
+
+   |           | Count | Provenance                                                                                                                                                                   |
+   | --------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | Approved  | 11    | Transcribed verbatim from `reference/existing-terms.docx`, the company's own approved General Terms & Conditions.                                                            |
+   | **DRAFT** | 4     | Mobilization, Manpower Replacement, Project Specific Terms, Transportation. Supplied by the company as **drafts**. Nobody has confirmed they have been through legal review. |
+
+   **Required operator action — before any quotation uses one of the four.**
+   Open the Terms library, read those four, and have whoever owns the company's
+   terms approve or amend the wording. They are editable in place; amend them
+   there rather than in the code, so the record of what was agreed lives with
+   the term.
+
+   The system does not distinguish them on screen — to the app a term is a term.
+   The distinction exists in `google-apps-script/src/terms/import-reference-terms.ts`
+   (`REFERENCE_TERMS` versus `COMPANY_DRAFT_TERMS`) and here. That is why this
+   step is a step and not a note.
+
+   `{{rate}}` in the _Manpower Rate_ term is deliberately unresolvable: a
+   quotation has no single rate, so validation flags it and a person must supply
+   the real figure for that quotation rather than a document going out with a
+   blank where a price belongs.
 
 4. **Authorized persons and their signatures.** Create each real signatory and
-   upload their real signature image. A person without one produces a quotation
-   with no signature.
+   upload their real signature image. A person without one is listed but **not
+   selectable** (PRD §24), so a quotation cannot silently go out unsigned.
+
+   **No signature image exists in this repository, and none may be added to
+   it.** Each file comes from the company and is uploaded through the app by an
+   Admin, which stores it in `Quotation Archive/_assets/signatures/`. What each
+   file must be:
+
+   | Requirement        | Value              | Enforced                                                           |
+   | ------------------ | ------------------ | ------------------------------------------------------------------ |
+   | Format             | **PNG**            | Magic bytes are checked — a JPEG renamed `.png` is refused         |
+   | Background         | **Transparent**    | Not enforced; an opaque one paints a white box over the letterhead |
+   | Maximum size       | 1024 KB            | Refused above                                                      |
+   | Minimum dimensions | 100 × 30 px        | Refused below                                                      |
+   | Recommended width  | ≥ 600 px           | Warned below — narrower looks soft at document scale               |
+   | Maximum dimensions | 10,000 × 10,000 px | Refused above, to stop a decompression bomb                        |
+
+   One file per authorized person, being that person's real signature. Do not
+   substitute a typed name, a scan of somebody else's, or a placeholder: this
+   image is what makes the document a signed one.
 
 5. **Do not create a test quotation in production.** Validation runs on the
    **development** deployment (`DEPLOYMENT_CHECKLIST.md`). If the company wants
@@ -533,3 +574,122 @@ not what was intended, and the two diverge exactly when it matters.
 | Rollback rehearsed (§8)                        | _not yet rehearsed_               |             |
 | Backup restore rehearsed (§7)                  | _not yet rehearsed_               |             |
 | Production smoke test: real quotation or none? | _not yet decided_                 |             |
+
+---
+
+## 11. Development setup checklist
+
+**Everything you must configure by hand to get a working development
+deployment.** Nothing in this repository has been deployed and no Google
+resource has been created — all of it is below.
+
+Development is a **complete second copy**: its own Drive root, its own
+spreadsheet, its own secrets, its own Apps Script deployment. The one thing it
+must never share with production is the spreadsheet, because the `Counters`
+sheet is the sole authority for the next quotation number, and a development
+save against the production sheet issues a real number and burns it.
+
+### Google Drive
+
+- [ ] A folder to act as the development archive root, named so it cannot be
+      mistaken for the live one — e.g. `Quotation Archive (DEV)`. A Shared Drive
+      is right for production (§1); development may sit in My Drive.
+- [ ] `_assets/signatures/` and `_backups/` inside it.
+- [ ] Its folder id, from the URL → `DRIVE_ROOT_FOLDER_ID`.
+- [ ] Sharing set to **Restricted**.
+
+### Google Sheets
+
+- [ ] An **empty** spreadsheet, e.g. `Quotation Tracking (DEV)`. Create no
+      sheets, headers or formatting — the backend does all of that on first use
+      (§2.3).
+- [ ] Its id, from the URL → `TRACKING_SPREADSHEET_ID`.
+
+### Apps Script project
+
+- [ ] A project owned by the account that owns the development Drive folder.
+      For development a personal account is acceptable; **production must be the
+      company account** (`DEPLOYMENT.md` §2.1).
+- [ ] `clasp login`, then `cp .clasp.json.example .clasp.json` in
+      `google-apps-script/` with the script id pasted in. `.clasp.json` is
+      git-ignored — it identifies a live deployment.
+- [ ] `npm run gas:push`.
+
+### Advanced Drive Service
+
+- [ ] Nothing to switch on by hand. `google-apps-script/appsscript.json` already
+      declares it and `clasp push` uploads the manifest:
+
+      "enabledAdvancedServices": [{ "userSymbol": "Drive", "serviceId": "drive", "version": "v3" }]
+
+          It is not optional. `Drive.Files.update` is what replaces a document's
+          content in place on a re-save, preserving the file id, the URL and Drive's
+          revision history. Without it a regenerated quotation would create a second
+          file and the link already sent to a client would point at the old one.
+
+- [ ] If the editor shows the advanced service as off after a push, open
+      _Services_ and confirm `Drive v3` is listed, then re-run the deployment.
+- [ ] On first run, **authorize the scopes** when prompted — Drive and Sheets.
+      Until that is done every call fails with a Drive authorization error.
+
+### Web App deployment
+
+- [ ] _Deploy → New deployment → Web app_.
+- [ ] **Execute as: Me** — the account that owns the Drive folder and the
+      spreadsheet. The script acts as that identity; there is no service account.
+- [ ] **Who has access: Anyone.** Required, not preferred — a cross-origin
+      browser `fetch` cannot complete Google's interactive sign-in, so anything
+      else makes the app unable to call the backend at all. The URL is therefore
+      public and is **not** a security boundary; the boundary is the session
+      token plus the per-action check (`DEPLOYMENT.md` §2.3).
+- [ ] Copy the **Web app URL** — it must end in `/exec`. A `/dev` URL is bound
+      to your editor session and must never be used by a running frontend.
+
+### Script Properties
+
+Set in _Project Settings → Script Properties_. **Names only below — never
+commit, print, screenshot or paste a value into an issue or a chat.**
+
+| Property                   | Required  | Where it comes from                                                  |
+| -------------------------- | --------- | -------------------------------------------------------------------- |
+| `SESSION_HMAC_SECRET`      | yes       | `npm run secrets:generate`                                           |
+| `PASSWORD_PEPPER`          | yes       | `npm run secrets:generate`                                           |
+| `TRACKING_SPREADSHEET_ID`  | yes       | the development spreadsheet URL                                      |
+| `DRIVE_ROOT_FOLDER_ID`     | yes       | the development folder URL                                           |
+| `COMPANY_VAT_NUMBER`       | no        | the company's registered number — 15 digits, first and last both `3` |
+| `ALLOWED_ORIGINS`          | no        | the dev site origin; defence in depth only                           |
+| `COMPANY_CODE`             | no        | `SFC` (default)                                                      |
+| `BRANCH_CODE`              | no        | `RUH` (default)                                                      |
+| `DOC_TYPE_CODE`            | no        | `QTN` (default)                                                      |
+| `BOOTSTRAP_ADMIN_EMAIL`    | temporary | §5.1 — deleted automatically                                         |
+| `BOOTSTRAP_ADMIN_PASSWORD` | temporary | §5.1 — deleted automatically                                         |
+| `REVOKED_TOKEN_IDS`        | no        | set only when revoking specific sessions                             |
+
+**Generate the development secrets separately from production.** Reusing the
+production `SESSION_HMAC_SECRET` would let a token minted by the development
+deployment authenticate against production.
+
+The last five have committed defaults and are **not secrets** — they are company
+identifiers printed on the quotation itself. Only the first two are confidential;
+`DRIVE_ROOT_FOLDER_ID` and `TRACKING_SPREADSHEET_ID` are not secret but are
+private, and naming them publicly tells somebody exactly what to try to open.
+
+### Frontend
+
+- [ ] `cp .env.example .env.local`, set `VITE_GAS_ENDPOINT` to the development
+      `/exec` URL and `VITE_APP_ENV=development`.
+- [ ] `.env.local` is git-ignored. Never commit it, and never point it at
+      production — a development build talking to the production endpoint issues
+      real numbers.
+- [ ] `npm run dev`.
+
+### Confirm it works
+
+- [ ] `health` responds with `"configured": true` and `"missing": []` (§3.7).
+      It reports **names only**, never values.
+- [ ] Sign in as the bootstrap Admin (§5.1).
+- [ ] Work through `quotation-implementation-plan/DEPLOYMENT_CHECKLIST.md`
+      sections A and B **against development**. That is what the checklist is
+      for, and doing it here is what makes it safe never to do it on production.
+- [ ] Install the backup trigger (§4) and run `dailyBackup` once by hand.
+- [ ] Rehearse the rollback (§8) and a restore (§7), and record both in §10.

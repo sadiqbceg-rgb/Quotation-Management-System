@@ -179,10 +179,18 @@ export function isValidQuotationNumber(
  * A mechanical, lossless transform of the canonical number. The input is
  * validated first so a malformed value can never become a filename.
  *
- * NOTE (§26 UR-01): PRD §5/§28 writes filenames as `SFC-QTN-RUH-2026-001`,
- * a different segment order from the approved document's `SFC/RUH/QTN/...`.
- * This function implements the slug of the canonical number. Confirm the
- * ordering with the company before the first production save.
+ * UR-01 IS SETTLED. The company has confirmed the ordering as
+ *
+ *     Company - Branch - Document Type - Year - Sequence
+ *     SFC-RUH-QTN-YYYY-NNN
+ *
+ * which is what the slug of the canonical number already produces. PRD §5/§28
+ * write the components as `SFC-QTN-RUH-…`; that ordering is superseded and must
+ * not be reintroduced.
+ *
+ * Keeping the slug a mechanical transform of the canonical number is what makes
+ * the two impossible to disagree: there is no second ordering to maintain, and
+ * a filename cannot drift from the number printed on the document.
  */
 export function toFileSafe(
   canonical: string,
