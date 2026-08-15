@@ -452,12 +452,6 @@ export function doGet(): GoogleAppsScript.Content.TextOutput {
  */
 export { provisionFirstAdmin, runProvisioning } from './auth/provisioning';
 export { measurePasswordHashCost } from './auth/password';
-
-/*
- * TEMPORARY — delete this line together with `auth/TEMP-cost-benchmark.ts` once
- * DEFAULT_PBKDF2_ITERATIONS has been tuned. Not in ACTIONS; measures only.
- */
-export { runPasswordCostBenchmark } from './auth/TEMP-cost-benchmark';
 export { installDailyBackupTrigger, removeDailyBackupTrigger } from './backup/daily-backup';
 
 /**

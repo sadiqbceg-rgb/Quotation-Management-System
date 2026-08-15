@@ -23,22 +23,38 @@
  * `Utilities.computeHmacSha256Signature` is a host bridge call, so it is orders
  * of magnitude slower than a native PBKDF2. The count that fits inside a
  * tolerable login is therefore far below the ~600k OWASP recommends for native
- * implementations, and DEFAULT_PBKDF2_ITERATIONS below is a starting point, not
- * a measured value.
+ * implementations.
  *
- * Run `measurePasswordHashCost()` in the Apps Script editor against the real
- * deployment, then set the highest count that keeps a login under ~1.5 s and
- * record it here and in google-apps-script/README.md. Because the count is
- * stored per record, raising it later is safe.
+ * MEASURED on the development deployment with `measurePasswordHashCost()`,
+ * three runs each:
+ *
+ *    1,200 →  842–994 ms
+ *    1,500 → 1121–1224 ms      chosen
+ *    2,000 → 1632–1872 ms      over the ~1.5 s target
+ *   10,000 → 9032–9617 ms      unusable
+ *
+ * 1,500 is the highest count whose SLOWEST reading stays inside ~1.5 s, which
+ * is the figure that matters: a login performs exactly one hash, so the user
+ * waits for the worst case, not the average.
+ *
+ * That the affordable count is this low is why the PEPPER carries the weight
+ * here. An attacker holding a stolen copy of the spreadsheet has the salts and
+ * the hashes but not the pepper — it lives in Script Properties, not in the
+ * sheet — and without it the iteration count is not what stands between them
+ * and the passwords.
+ *
+ * Because the count is stored PER RECORD, raising it later is safe: each
+ * account is re-hashed at the new cost on its next successful login (see
+ * `auth/handlers.ts`). Re-measure on a deployment whose hardware differs.
  */
 
 import { bytesToHex, hexToBytes, randomBytes, textToBytes, timingSafeEqual } from './bytes';
 
 /**
- * Starting point only — measure with `measurePasswordHashCost()` and tune.
+ * Measured on the development deployment: 1121–1224 ms per hash.
  * See the note above before changing this.
  */
-export const DEFAULT_PBKDF2_ITERATIONS = 10_000;
+export const DEFAULT_PBKDF2_ITERATIONS = 1_500;
 
 export const MIN_PBKDF2_ITERATIONS = 1_000;
 export const SALT_BYTES = 32;
