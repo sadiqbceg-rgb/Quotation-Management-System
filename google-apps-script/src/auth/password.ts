@@ -145,11 +145,19 @@ export function performDummyHash(
  * cost on this deployment, then tune DEFAULT_PBKDF2_ITERATIONS.
  *
  * Not reachable through the web app.
+ *
+ * The result is LOGGED as well as returned: the editor's Run button discards a
+ * return value, so an operator who only reads the execution log would otherwise
+ * see the function start and finish and never learn the number it exists to
+ * produce. The return value is unchanged for any programmatic caller.
  */
 export function measurePasswordHashCost(iterations: number = DEFAULT_PBKDF2_ITERATIONS): string {
   const salt = generateSalt();
   const started = Date.now();
   hashPassword('measurement-only', salt, iterations, 'measurement-pepper');
   const elapsed = Date.now() - started;
-  return `${String(iterations)} iterations took ${String(elapsed)} ms`;
+
+  const measurement = `${String(iterations)} iterations took ${String(elapsed)} ms`;
+  console.info(measurement);
+  return measurement;
 }
