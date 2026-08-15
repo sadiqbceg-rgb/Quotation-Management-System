@@ -42,11 +42,19 @@ import { measurePasswordHashCost } from './password';
 /**
  * The counts to measure, cheapest first.
  *
- * 1,000 is MIN_PBKDF2_ITERATIONS — the floor `hashPassword` enforces, and the
- * lowest value that could ever be chosen. 10,000 is the current default, kept
- * in the sweep as the baseline the other figures are read against.
+ * NARROWED to bracket the ~1–1.5 s login target. The first DEV sweep measured
+ * (slowest of three runs each):
+ *
+ *    1,000 →  1092 ms      within target
+ *    2,000 →  1872 ms      over
+ *    4,000 →  6624 ms      far over, and wildly variable (3654–6624)
+ *   10,000 →  9617 ms      far over
+ *
+ * So the highest acceptable count lies between 1,000 and 2,000, and only that
+ * gap is worth measuring. 1,000 is MIN_PBKDF2_ITERATIONS — the floor
+ * `hashPassword` enforces — so nothing below this range is selectable anyway.
  */
-const BENCHMARK_ITERATION_COUNTS = [1_000, 2_000, 4_000, 10_000];
+const BENCHMARK_ITERATION_COUNTS = [1_200, 1_400, 1_500];
 
 /** Enough repeats to see variance, few enough to stay well inside the 6-minute limit. */
 const BENCHMARK_REPEATS = 3;
