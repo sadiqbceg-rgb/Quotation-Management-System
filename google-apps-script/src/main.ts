@@ -452,13 +452,6 @@ export function doGet(): GoogleAppsScript.Content.TextOutput {
  */
 export { provisionFirstAdmin, runProvisioning } from './auth/provisioning';
 export { measurePasswordHashCost } from './auth/password';
-
-/*
- * TEMPORARY — delete this line together with `auth/TEMP-dev-recovery.ts` once
- * the DEV Admin password has been recovered. Not in ACTIONS; not reachable
- * over HTTP.
- */
-export { runAdminPasswordRecovery } from './auth/TEMP-dev-recovery';
 export { installDailyBackupTrigger, removeDailyBackupTrigger } from './backup/daily-backup';
 
 /**
