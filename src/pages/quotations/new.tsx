@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom';
 
 import { PageHeader } from '@/components/common/PageHeader';
 import { Button } from '@/components/common/Button';
-import { Card } from '@/components/common/Card';
-import { PhasePlaceholder } from '@/components/common/PhasePlaceholder';
 import { QuotationInfoSection } from '@/components/quotation/QuotationInfoSection';
 import { ClientInfoSection } from '@/components/client/ClientInfoSection';
 import { useAuth } from '@/hooks/useAuth';
@@ -246,13 +244,6 @@ export default function NewQuotationPage() {
           signatories={signatories}
           error={personError ?? undefined}
         />
-
-        <Card title="Preview and Documents">
-          <PhasePlaceholder
-            phase="07-09 (Document, PDF, DOCX)"
-            feature="Preview and document generation"
-          />
-        </Card>
       </form>
     </>
   );
