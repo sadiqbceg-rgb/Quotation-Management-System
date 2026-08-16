@@ -658,6 +658,46 @@ export function get(payload: unknown, context: HandlerContext): GetResponse {
 /* Status                                                                     */
 /* -------------------------------------------------------------------------- */
 
+export function discardDraft(
+  payload: unknown,
+  context: HandlerContext,
+): { success: true; deletedDraftId: string } {
+  const caller = requireCaller(context);
+  const body = asRecord(payload);
+
+  const draftId = readString(body, 'draftId');
+  if (draftId.length === 0) {
+    throw new ApiError('VALIDATION_FAILED', 'A valid draft identifier is required.');
+  }
+
+  const record = records.findByDraftId(draftId);
+  if (record === null) {
+    throw new ApiError('VALIDATION_FAILED', 'That draft could not be found.');
+  }
+
+  if (record.quotationNumber.length > 0) {
+    throw new ApiError(
+      'VALIDATION_FAILED',
+      'This quotation has already received a quotation number and cannot be discarded.',
+    );
+  }
+
+  if (record.createdBy.length > 0 && caller.email !== record.createdBy) {
+    throw new ApiError('FORBIDDEN', 'Only the creator of this draft can discard it.');
+  }
+
+  records.deleteByDraftId(draftId);
+  writeAudit({
+    actor: caller.email,
+    action: 'quotation.discardDraft',
+    target: draftId,
+    outcome: 'success',
+    requestId: context.requestId,
+  });
+
+  return { success: true, deletedDraftId: draftId };
+}
+
 export function updateStatus(
   payload: unknown,
   context: HandlerContext,

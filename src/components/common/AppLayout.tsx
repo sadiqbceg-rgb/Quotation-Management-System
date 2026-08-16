@@ -38,6 +38,18 @@ export function AppLayout() {
         <main className="flex-1 px-4 py-6 lg:px-8">
           <Outlet />
         </main>
+        <footer className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 text-center text-xs text-slate-500 lg:px-8">
+          Developed by{' '}
+          <a
+            href="https://github.com/gauthamnholla"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-brand-navy underline underline-offset-2 hover:text-brand-navy/80 transition-colors"
+            aria-label="Developed by EAGLEHEART on GitHub"
+          >
+            EAGLEHEART
+          </a>
+        </footer>
       </div>
     </div>
   );

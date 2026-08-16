@@ -255,60 +255,57 @@ export function createSpreadsheetFake(): SpreadsheetFake {
       getRange: (row: number, column: number, numRows = 1, numColumns = 1) => {
         rangeCallCount += 1;
         return {
-        getValue: (): unknown => {
-          const value = sheet.rows[row - 1]?.[column - 1] ?? '';
-          announceRead(sheet.name);
-          return value;
-        },
-        getValues: (): unknown[][] => {
-          const out: unknown[][] = [];
-          for (let r = 0; r < numRows; r++) {
-            const source = sheet.rows[row - 1 + r] ?? [];
-            const slice: unknown[] = [];
-            for (let c = 0; c < numColumns; c++) {
-              slice.push(source[column - 1 + c] ?? '');
+          getValue: (): unknown => {
+            const value = sheet.rows[row - 1]?.[column - 1] ?? '';
+            announceRead(sheet.name);
+            return value;
+          },
+          getValues: (): unknown[][] => {
+            const out: unknown[][] = [];
+            for (let r = 0; r < numRows; r++) {
+              const source = sheet.rows[row - 1 + r] ?? [];
+              const slice: unknown[] = [];
+              for (let c = 0; c < numColumns; c++) {
+                slice.push(source[column - 1 + c] ?? '');
+              }
+              out.push(slice);
             }
-            out.push(slice);
-          }
-          /*
-           * Announced AFTER the values are captured, not before.
-           *
-           * The window a concurrent execution is dangerous in is the one
-           * between a read completing and the matching write — the caller is
-           * now holding a snapshot that another execution can invalidate.
-           * Firing before the copy would let an interrupted reader see the
-           * intruder's writes, which is the one thing a real race never does.
-           */
-          announceRead(sheet.name);
-          return out;
-        },
-        setValues: (values: unknown[][]): void => {
-          values.forEach((rowValues, r) => {
-            const target = sheet.rows[row - 1 + r] ?? [];
-            rowValues.forEach((value, c) => {
-              target[column - 1 + c] = value;
+            announceRead(sheet.name);
+            return out;
+          },
+          setValues: (values: unknown[][]): void => {
+            values.forEach((rowValues, r) => {
+              const target = sheet.rows[row - 1 + r] ?? [];
+              rowValues.forEach((value, c) => {
+                target[column - 1 + c] = value;
+              });
+              sheet.rows[row - 1 + r] = target;
             });
-            sheet.rows[row - 1 + r] = target;
-          });
-        },
-        setValue: (value: unknown): void => {
-          const target = sheet.rows[row - 1] ?? [];
-          target[column - 1] = value;
-          sheet.rows[row - 1] = target;
-        },
-        setNumberFormat: (format: string): void => {
-          sheet.numberFormats.push(`${String(column)}:${format}`);
-        },
-        setHorizontalAlignment: (): void => undefined,
-        setFontWeight: (): void => undefined,
-        setDataValidation: (rule: unknown): void => {
-          const values =
-            typeof rule === 'object' && rule !== null && 'values' in rule
-              ? (rule.values as string[])
-              : [];
-          sheet.validations.set(column, values);
-        },
+          },
+          setValue: (value: unknown): void => {
+            const target = sheet.rows[row - 1] ?? [];
+            target[column - 1] = value;
+            sheet.rows[row - 1] = target;
+          },
+          setNumberFormat: (format: string): void => {
+            sheet.numberFormats.push(`${String(column)}:${format}`);
+          },
+          setHorizontalAlignment: (): void => undefined,
+          setFontWeight: (): void => undefined,
+          setDataValidation: (rule: unknown): void => {
+            const values =
+              typeof rule === 'object' && rule !== null && 'values' in rule
+                ? (rule.values as string[])
+                : [];
+            sheet.validations.set(column, values);
+          },
         };
+      },
+      deleteRow: (rowIndex: number): void => {
+        sheet.rows.splice(rowIndex - 1, 1);
+      },
+      clear: (): void => {
+        sheet.rows = [];
       },
     };
   }

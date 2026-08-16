@@ -143,6 +143,10 @@ export const ACTIONS: Record<string, ActionDefinition> = {
     access: 'authenticated',
     handler: quotation.save,
   },
+  'quotation.discardDraft': {
+    access: 'authenticated',
+    handler: quotation.discardDraft,
+  },
   'quotation.get': {
     access: 'authenticated',
     handler: quotation.get,

@@ -238,10 +238,10 @@ describe('security', () => {
 });
 
 describe('the toolbar (PRD §29)', () => {
-  function renderToolbar(canExport = true) {
-    render(
+  function renderToolbar(canExport = true, quotationNumber = 'SFC/RUH/QTN/2026/004') {
+    return render(
       <PreviewToolbar
-        quotationNumber="SFC/RUH/QTN/2026/004"
+        quotationNumber={quotationNumber}
         pageCount={2}
         canExport={canExport}
         onBack={() => undefined}
@@ -253,9 +253,21 @@ describe('the toolbar (PRD §29)', () => {
         onSaveToDrive={() => undefined}
         isSavingToDrive={false}
         isSavedToDrive={false}
+        showDiscardDraft={quotationNumber.length === 0}
+        onDiscardDraft={() => undefined}
+        isDiscardingDraft={false}
       />,
     );
   }
+
+  it('shows the discard option only for drafts', () => {
+    const { unmount } = renderToolbar(true, '');
+    expect(screen.getByRole('button', { name: /discard draft/i })).toBeInTheDocument();
+    unmount();
+
+    renderToolbar(true, 'SFC/RUH/QTN/2026/004');
+    expect(screen.queryByRole('button', { name: /discard draft/i })).not.toBeInTheDocument();
+  });
 
   it('offers Back to Edit and Print', () => {
     renderToolbar();

@@ -37,6 +37,7 @@ export const AUDITED_ACTIONS: readonly string[] = [
 
   'quotation.reserveNumber',
   'quotation.save',
+  'quotation.discardDraft',
   'quotation.updateStatus',
   'quotation.uploadToDrive',
   'quotation.recordTracking',

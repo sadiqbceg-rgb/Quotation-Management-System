@@ -18,6 +18,9 @@ export interface PreviewToolbarProps {
   isSavingToDrive: boolean;
   /** True once the documents are filed; the button then offers to re-save. */
   isSavedToDrive: boolean;
+  showDiscardDraft?: boolean;
+  onDiscardDraft?: () => void;
+  isDiscardingDraft?: boolean;
 }
 
 /**
@@ -43,6 +46,9 @@ export function PreviewToolbar({
   onSaveToDrive,
   isSavingToDrive,
   isSavedToDrive,
+  showDiscardDraft = false,
+  onDiscardDraft,
+  isDiscardingDraft = false,
 }: PreviewToolbarProps) {
   return (
     <div className="print-hide flex flex-wrap items-center justify-between gap-3">
@@ -60,6 +66,17 @@ export function PreviewToolbar({
         <Button variant="secondary" onClick={onPrint}>
           Print
         </Button>
+
+        {showDiscardDraft && onDiscardDraft !== undefined ? (
+          <Button
+            variant="danger"
+            onClick={onDiscardDraft}
+            isLoading={isDiscardingDraft}
+            disabled={isDiscardingDraft}
+          >
+            Discard Draft
+          </Button>
+        ) : null}
 
         <Button
           disabled={!canExport}

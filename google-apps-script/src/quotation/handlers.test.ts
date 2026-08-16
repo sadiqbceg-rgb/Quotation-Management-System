@@ -165,6 +165,90 @@ describe('draft save', () => {
   });
 });
 
+describe('discard draft', () => {
+  it('successfully discards an unfinished draft', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: false });
+
+    const response = call('quotation.discardDraft', { draftId: 'draft-0001' });
+
+    expect(response.ok).toBe(true);
+    expect(response.data).toEqual({ success: true, deletedDraftId: 'draft-0001' });
+    expect(env.spreadsheet.dataRows(QUOTATION_RECORDS_SHEET_NAME)).toHaveLength(0);
+    expect(readLastSequence(2026)).toBe(0);
+  });
+
+  it('refuses to discard a finalized quotation', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: true });
+
+    const response = call('quotation.discardDraft', { draftId: 'draft-0001' });
+
+    expect(response.error?.code).toBe('VALIDATION_FAILED');
+    expect(env.spreadsheet.dataRows(QUOTATION_RECORDS_SHEET_NAME)).toHaveLength(1);
+  });
+
+  it('refuses to discard a quotation that already has a number', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: true });
+
+    const response = call('quotation.discardDraft', { draftId: 'draft-0001' });
+
+    expect(response.error?.code).toBe('VALIDATION_FAILED');
+    expect((call('quotation.list').data as Array<{ quotationNumber: string }>)[0]?.quotationNumber).toBe(
+      'SFC/RUH/QTN/2026/001',
+    );
+  });
+
+  it('rejects a non-creator discarding someone else\'s draft', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: false });
+
+    const otherPassword = 'OTHER_ONLY_correct-horse-battery';
+    const otherMaterial = createPasswordRecord(otherPassword, PEPPER, 1_000);
+    createUser({
+      email: 'other@speedxksa.com',
+      passwordHash: otherMaterial.hash,
+      salt: otherMaterial.salt,
+      iterations: otherMaterial.iterations,
+      role: 'User',
+    });
+
+    const login = callAnonymous('auth.login', {
+      email: 'other@speedxksa.com',
+      password: otherPassword,
+    });
+    const otherToken = (login.data as { token: string }).token;
+
+    const response = postRaw(
+      JSON.stringify({
+        action: 'quotation.discardDraft',
+        requestId: 'test-request',
+        payload: { draftId: 'draft-0001' },
+        token: otherToken,
+      }),
+    );
+
+    expect(response.error?.code).toBe('FORBIDDEN');
+    expect(env.spreadsheet.dataRows(QUOTATION_RECORDS_SHEET_NAME)).toHaveLength(1);
+  });
+
+  it('writes an audit entry when a draft is discarded', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: false });
+
+    call('quotation.discardDraft', { draftId: 'draft-0001' });
+
+    const auditRows = env.spreadsheet.dataRows('AuditLog');
+    expect(auditRows.some((row) => row.includes('quotation.discardDraft'))).toBe(true);
+  });
+
+  it('handles repeated discard safely', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: false });
+    call('quotation.discardDraft', { draftId: 'draft-0001' });
+
+    const response = call('quotation.discardDraft', { draftId: 'draft-0001' });
+
+    expect(response.error?.code).toBe('VALIDATION_FAILED');
+    expect(env.spreadsheet.dataRows(QUOTATION_RECORDS_SHEET_NAME)).toHaveLength(0);
+  });
+});
+
 /* -------------------------------------------------------------------------- */
 
 describe('finalize', () => {

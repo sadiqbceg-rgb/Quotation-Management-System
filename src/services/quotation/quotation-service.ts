@@ -115,6 +115,14 @@ export async function saveQuotation(
   );
 }
 
+export async function discardDraft(draftId: string, token: string): Promise<{ success: true; deletedDraftId: string }> {
+  return callAction<{ draftId: string }, { success: true; deletedDraftId: string }>(
+    'quotation.discardDraft',
+    { draftId },
+    { token },
+  );
+}
+
 export async function listQuotations(token: string): Promise<QuotationSummary[]> {
   return callAction<Record<string, never>, QuotationSummary[]>('quotation.list', {}, { token });
 }

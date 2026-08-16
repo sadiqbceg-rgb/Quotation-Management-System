@@ -48,6 +48,7 @@ export const WINDOW_SECONDS = 60;
  */
 export const ACTION_LIMITS: Record<string, number> = {
   'quotation.save': 20,
+  'quotation.discardDraft': 10,
   'quotation.uploadToDrive': 10,
   'persons.uploadSignature': 10,
   'quotation.recordTracking': 20,

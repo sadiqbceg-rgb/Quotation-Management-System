@@ -12,12 +12,13 @@ import { useAuth } from '@/hooks/useAuth';
 import { useGenerateDocx } from '@/hooks/useGenerateDocx';
 import { useGeneratePdf } from '@/hooks/useGeneratePdf';
 import { useSaveToDrive } from '@/hooks/useSaveToDrive';
+import { useToast } from '@/hooks/useToast';
 import { RetryUpload } from '@/components/quotation/RetryUpload';
 import { SaveProgress } from '@/components/quotation/SaveProgress';
 import { SaveResult } from '@/components/quotation/SaveResult';
 import { SheetsSyncWarning } from '@/components/quotation/SheetsSyncWarning';
 import { AppError, messageOf } from '@/services/api/errors';
-import { getQuotationByDraftId } from '@/services/quotation/quotation-service';
+import { discardDraft, getQuotationByDraftId } from '@/services/quotation/quotation-service';
 import { fetchSignature } from '@/services/signatories/signatory-service';
 import {
   EMPTY_IMAGE_REF,
@@ -111,6 +112,7 @@ function toDocumentLines(raw: unknown): DocumentLine[] {
 export default function QuotationPreviewPage() {
   const { draftId } = useParams<{ draftId: string }>();
   const { state } = useAuth();
+  const { show } = useToast();
   const navigate = useNavigate();
   const scale = useFitScale();
   const pdf = useGeneratePdf();
@@ -225,6 +227,21 @@ export default function QuotationPreviewPage() {
   }, [stored, assets.data, signature.data]);
 
   const isLoading = quotation.isPending || assets.isPending;
+  const isDraft = (stored?.quotationNumber ?? '').length === 0;
+
+  const handleDiscardDraft = async (): Promise<void> => {
+    if (token === null || draftId === undefined) return;
+    const confirmed = window.confirm('Discard this draft? This action cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+      await discardDraft(draftId, token);
+      show({ variant: 'success', message: 'Draft discarded.' });
+      void navigate('/quotations');
+    } catch (error: unknown) {
+      show({ variant: 'error', message: messageOf(error) });
+    }
+  };
 
   return (
     <>
@@ -291,6 +308,11 @@ export default function QuotationPreviewPage() {
                   token: token ?? '',
                 });
               }}
+              showDiscardDraft={isDraft}
+              onDiscardDraft={() => {
+                void handleDiscardDraft();
+              }}
+              isDiscardingDraft={false}
             />
           </div>
 

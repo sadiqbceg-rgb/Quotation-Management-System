@@ -26,6 +26,7 @@ export const ACTION_NAMES = [
   // Phase 03
   'quotation.reserveNumber',
   'quotation.save',
+  'quotation.discardDraft',
   'quotation.get',
   'quotation.list',
   'quotation.updateStatus',

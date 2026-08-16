@@ -195,6 +195,28 @@ export function setStatus(existing: QuotationRecord, status: QuotationStatus): v
   setCell(target, existing.rowNumber, COLUMN.updatedAt + 1, new Date().toISOString());
 }
 
+export function deleteByDraftId(draftId: string): boolean {
+  const target = sheet();
+  const found = findRow(target, COLUMN.draftId, draftId);
+  if (found === null) return false;
+
+  // Google Apps Script exposes `deleteRow`, and the fake spreadsheet in tests
+  // mirrors it so the operation stays explicit and easy to reason about.
+  if ('deleteRow' in target && typeof target.deleteRow === 'function') {
+    target.deleteRow(found.rowNumber);
+    return true;
+  }
+
+  const rows = readRows(target);
+  const next = rows.filter((_row, index) => index + 2 !== found.rowNumber);
+  target.clear();
+  if (next.length > 0) {
+    target.getRange(1, 1, 1, QUOTATION_RECORDS_HEADERS.length).setValues([QUOTATION_RECORDS_HEADERS.slice()]);
+    target.getRange(2, 1, next.length, QUOTATION_RECORDS_HEADERS.length).setValues(next);
+  }
+  return true;
+}
+
 /** Every record, newest first. Phase 11 replaces this with the tracking sheet. */
 export function listAll(): QuotationRecord[] {
   const rows = readRows(sheet());
