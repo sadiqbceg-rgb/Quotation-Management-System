@@ -1,11 +1,14 @@
 import { PageHeader } from '@/components/common/PageHeader';
-import { PhasePlaceholder } from '@/components/common/PhasePlaceholder';
+import { EmptyState } from '@/components/common/EmptyState';
 
 export default function CustomersPage() {
   return (
     <>
       <PageHeader title="Customers" description="Client records reused across quotations." />
-      <PhasePlaceholder phase="03 (Quotation Core)" feature="The customer library" />
+      <EmptyState
+        title="Customer library is not part of the current V1 release"
+        description="Customer details can be entered directly when creating a quotation. A reusable customer library is planned for a future version."
+      />
     </>
   );
 }

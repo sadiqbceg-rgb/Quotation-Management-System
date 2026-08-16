@@ -92,8 +92,8 @@ describe('placeholder pages', () => {
 
   it('states honestly that a section is not implemented instead of showing sample data', () => {
     renderInShell('/customers', <CustomersPage />);
-    expect(screen.getByText(/is not implemented yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/No sample or demo data is shown here by design/i)).toBeInTheDocument();
+    expect(screen.getByText(/Customer library is not part of the current V1 release/i)).toBeInTheDocument();
+    expect(screen.getByText(/Customer details can be entered directly when creating a quotation/i)).toBeInTheDocument();
   });
 
   it('does not reserve a quotation number when the New Quotation page opens', async () => {
