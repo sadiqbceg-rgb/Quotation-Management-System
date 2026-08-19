@@ -150,6 +150,52 @@ export function setActive(user: UserRecord, active: boolean): void {
   setCell(sheet(), user.rowNumber, COLUMN.active + 1, active);
 }
 
+export function setRole(user: UserRecord, role: Role): void {
+  setCell(sheet(), user.rowNumber, COLUMN.role + 1, role);
+}
+
+/**
+ * Every account, in sheet order.
+ *
+ * Rows with no email are skipped rather than returned as a blank user: a
+ * trailing formatted-but-empty row is a normal thing to find in a spreadsheet
+ * somebody has opened, and it is not an account.
+ *
+ * This returns the FULL record, password material included, because it is the
+ * repository's job to read the sheet and not its job to decide what a client
+ * may see. `toPublicUser` in auth/handlers.ts is the single place that strips
+ * it, and a test asserts no hash or salt survives that boundary.
+ */
+export function listAll(): UserRecord[] {
+  const rows = readRows(sheet());
+  const records: UserRecord[] = [];
+
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index];
+    if (row === undefined) continue;
+    if (asText(row[COLUMN.email]).length === 0) continue;
+    records.push(toRecord(row, index + 2));
+  }
+
+  return records;
+}
+
+/**
+ * How many accounts are both `Admin` and `active`.
+ *
+ * The last-Admin guard is built on this. It counts from a single read so the
+ * answer is consistent within one pass; callers run it inside the script lock
+ * (see `withUserLock` in auth/handlers.ts), because on its own a count is a
+ * snapshot that two concurrent requests could each act on.
+ */
+export function countActiveAdmins(): number {
+  let count = 0;
+  for (const record of listAll()) {
+    if (record.role === 'Admin' && record.active) count++;
+  }
+  return count;
+}
+
 /** True when the sheet holds no accounts — used to gate first-run provisioning. */
 export function isEmpty(): boolean {
   return readRows(sheet()).length === 0;

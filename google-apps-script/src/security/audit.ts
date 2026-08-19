@@ -34,6 +34,9 @@ export const AUDITED_ACTIONS: readonly string[] = [
   'auth.login',
   'auth.logout',
   'admin.createUser',
+  'admin.resetUserCredential',
+  'admin.setUserActive',
+  'admin.setUserRole',
 
   'quotation.reserveNumber',
   'quotation.save',
@@ -65,6 +68,10 @@ export const READ_ONLY_ACTIONS: readonly string[] = [
   // and reports names and booleans only — never a value (§19.7).
   'admin.diagnostics',
   'auth.me',
+  // Reads the account list. Returns no password material — `ManagedUser` has
+  // no field for it — so this changes nothing and discloses nothing an Admin
+  // cannot already read in the sheet.
+  'admin.listUsers',
   'quotation.get',
   'quotation.list',
   'items.list',

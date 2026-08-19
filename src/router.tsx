@@ -15,6 +15,7 @@ import ItemsPage from '@/pages/items';
 import TermsPage from '@/pages/terms';
 import SignatoriesPage from '@/pages/signatories';
 import SettingsPage from '@/pages/settings';
+import UsersPage from '@/pages/users';
 
 function NotFoundPage() {
   return (
@@ -69,6 +70,14 @@ export const router = createBrowserRouter([
         element: (
           <RequireRole role="Admin">
             <SettingsPage />
+          </RequireRole>
+        ),
+      },
+      {
+        path: 'users',
+        element: (
+          <RequireRole role="Admin">
+            <UsersPage />
           </RequireRole>
         ),
       },

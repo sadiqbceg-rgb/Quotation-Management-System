@@ -114,6 +114,34 @@ export const ACTIONS: Record<string, ActionDefinition> = {
     access: 'Admin',
     handler: auth.createUser,
   },
+  /*
+   * User administration (§18.4 "Manage users": Admin only).
+   *
+   * `access: 'Admin'` here is the ONLY authorization these need. The router
+   * applies it before the handler runs, so none of them re-checks the role —
+   * a handler that authorises itself is how one forgotten check becomes an
+   * escalation.
+   *
+   * `resetUserCredential` avoids the word "password" deliberately: the action
+   * name is written into the audit sheet's Action column, and FORBIDDEN_IN_AUDIT
+   * rejects /password/i so that a real one can never hide there.
+   */
+  'admin.listUsers': {
+    access: 'Admin',
+    handler: auth.listUsers,
+  },
+  'admin.resetUserCredential': {
+    access: 'Admin',
+    handler: auth.resetUserCredential,
+  },
+  'admin.setUserActive': {
+    access: 'Admin',
+    handler: auth.setUserActive,
+  },
+  'admin.setUserRole': {
+    access: 'Admin',
+    handler: auth.setUserRole,
+  },
 
   /*
    * Deployment diagnostics — Admin only, and deliberately separate from

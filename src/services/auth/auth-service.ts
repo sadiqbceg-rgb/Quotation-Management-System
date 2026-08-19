@@ -47,3 +47,76 @@ export async function createUser(
 ): Promise<AuthenticatedUser> {
   return callAction<CreateUserInput, AuthenticatedUser>('admin.createUser', input, { token });
 }
+
+/* -------------------------------------------------------------------------- */
+/* User administration                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * An account as the user-management screen sees it.
+ *
+ * There is no hash, salt or iteration field, and that is deliberate: the server
+ * strips them, and this type is the client-side statement of the same contract.
+ */
+export interface ManagedUser {
+  email: string;
+  role: UserRole;
+  active: boolean;
+  /** ISO string. Empty when the sheet has no value. */
+  createdAt: string;
+  /** ISO string. Empty until the account has signed in at least once. */
+  lastLoginAt: string;
+}
+
+/**
+ * Every account.
+ *
+ * Admin only — like every function below, the check that matters happens in
+ * Apps Script. These wrappers add no authorization of their own.
+ */
+export async function listUsers(token: string): Promise<ManagedUser[]> {
+  return callAction<Record<string, never>, ManagedUser[]>('admin.listUsers', {}, { token });
+}
+
+/**
+ * Replace an account's sign-in credential.
+ *
+ * `newSecret`, not `newPassword`: the backend action is named to keep the word
+ * out of the audit sheet, and the payload key matches so the two read the same.
+ * The value is sent once over HTTPS and is never stored anywhere on the client.
+ */
+export async function resetUserCredential(
+  email: string,
+  newSecret: string,
+  token: string,
+): Promise<ManagedUser> {
+  return callAction<{ email: string; newSecret: string }, ManagedUser>(
+    'admin.resetUserCredential',
+    { email, newSecret },
+    { token },
+  );
+}
+
+export async function setUserActive(
+  email: string,
+  active: boolean,
+  token: string,
+): Promise<ManagedUser> {
+  return callAction<{ email: string; active: boolean }, ManagedUser>(
+    'admin.setUserActive',
+    { email, active },
+    { token },
+  );
+}
+
+export async function setUserRole(
+  email: string,
+  role: UserRole,
+  token: string,
+): Promise<ManagedUser> {
+  return callAction<{ email: string; role: UserRole }, ManagedUser>(
+    'admin.setUserRole',
+    { email, role },
+    { token },
+  );
+}

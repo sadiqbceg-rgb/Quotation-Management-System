@@ -19,6 +19,13 @@ export const ACTION_NAMES = [
   'auth.me',
   'admin.createUser',
 
+  // User administration (§18.4). All Admin-only, enforced server-side by the
+  // ACTIONS table — the route guard and the hidden nav item are UX only.
+  'admin.listUsers',
+  'admin.resetUserCredential',
+  'admin.setUserActive',
+  'admin.setUserRole',
+
   // Phase 14 — Admin-only deployment diagnostics: configuration completeness
   // plus Drive and Sheets reachability. Names and booleans only.
   'admin.diagnostics',

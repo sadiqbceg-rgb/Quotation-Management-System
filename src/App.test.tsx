@@ -53,7 +53,9 @@ describe('application shell', () => {
     for (const item of NAV_ITEMS) {
       expect(within(nav).getByRole('link', { name: item.label })).toBeInTheDocument();
     }
-    expect(NAV_ITEMS).toHaveLength(8);
+    // Dashboard, New Quotation, Quotations, Customers, Items / Services,
+    // Terms & Conditions, Authorized Persons, Company Settings, Users.
+    expect(NAV_ITEMS).toHaveLength(9);
   });
 
   it('hides Admin-only destinations from a User', () => {
@@ -63,6 +65,7 @@ describe('application shell', () => {
     const nav = screen.getByRole('navigation', { name: 'Main' });
     expect(within(nav).queryByRole('link', { name: 'Authorized Persons' })).not.toBeInTheDocument();
     expect(within(nav).queryByRole('link', { name: 'Company Settings' })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
     expect(within(nav).getByRole('link', { name: 'New Quotation' })).toBeInTheDocument();
   });
 

@@ -23,6 +23,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Terms & Conditions', path: '/terms' },
   { label: 'Authorized Persons', path: '/signatories', requiredRole: 'Admin' },
   { label: 'Company Settings', path: '/settings', requiredRole: 'Admin' },
+  { label: 'Users', path: '/users', requiredRole: 'Admin' },
 ];
 
 /**

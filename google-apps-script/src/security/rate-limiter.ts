@@ -52,6 +52,16 @@ export const ACTION_LIMITS: Record<string, number> = {
   'quotation.uploadToDrive': 10,
   'persons.uploadSignature': 10,
   'quotation.recordTracking': 20,
+  /*
+   * User administration. Each PBKDF2 hash costs roughly a second of host bridge
+   * calls, so credential resets are capped tightest; the other two take the
+   * script lock and are capped low so a loop cannot hold it against everyone
+   * else. Nobody administering a sub-ten-person company reaches these.
+   */
+  'admin.createUser': 10,
+  'admin.resetUserCredential': 10,
+  'admin.setUserActive': 20,
+  'admin.setUserRole': 20,
 };
 
 /**
