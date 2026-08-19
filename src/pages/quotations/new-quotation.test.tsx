@@ -2,7 +2,11 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import NewQuotationPage from '@/pages/quotations/new';
+// The FORM, not the settings-loading page wrapper: these tests are about the
+// quotation editor, and gating them on a company-defaults round trip would
+// couple them to an unrelated concern. The form defaults to the shipped
+// constants, which is exactly what it used before Company Settings existed.
+import { NewQuotationForm as NewQuotationPage } from '@/pages/quotations/new';
 import * as quotationService from '@/services/quotation/quotation-service';
 import * as signatoryService from '@/services/signatories/signatory-service';
 import { AppError } from '@/services/api/errors';

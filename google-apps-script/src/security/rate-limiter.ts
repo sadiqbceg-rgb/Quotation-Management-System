@@ -69,6 +69,8 @@ export const ACTION_LIMITS: Record<string, number> = {
   'clients.create': 30,
   'clients.update': 30,
   'clients.deactivate': 20,
+  // One screen, one save. Nobody edits company defaults in a loop.
+  'settings.update': 10,
 };
 
 /**

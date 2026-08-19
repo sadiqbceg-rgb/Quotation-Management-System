@@ -45,6 +45,8 @@ export const AUDITED_ACTIONS: readonly string[] = [
   'quotation.uploadToDrive',
   'quotation.recordTracking',
 
+  'settings.update',
+
   'clients.create',
   'clients.update',
   'clients.deactivate',
@@ -78,6 +80,9 @@ export const READ_ONLY_ACTIONS: readonly string[] = [
   'admin.listUsers',
   'quotation.get',
   'quotation.list',
+  // Reads company defaults and the deployment codes printed on every
+  // quotation. No secret and no resource id is in the response.
+  'settings.get',
   'clients.list',
   'items.list',
   'terms.list',

@@ -34,6 +34,7 @@ import * as clients from './clients/handlers';
 import * as items from './items/handlers';
 import * as persons from './persons/handlers';
 import * as quotation from './quotation/handlers';
+import * as settings from './settings/handlers';
 import * as terms from './terms/handlers';
 import { ApiError, type Caller, type ErrorCode, type HandlerContext } from './errors';
 import { checkRequestLimits, rateLimitError } from './security/rate-limiter';
@@ -229,6 +230,26 @@ export const ACTIONS: Record<string, ActionDefinition> = {
   'clients.deactivate': {
     access: 'Admin',
     handler: clients.deactivate,
+  },
+
+  /*
+   * Company settings.
+   *
+   * `get` is `authenticated`: producing a quotation needs the VAT default, the
+   * validity days and the closing paragraph, so a User must be able to read
+   * them. `update` is Admin.
+   *
+   * These are DEFAULTS for the next quotation. Each quotation stores its own
+   * rate and its own closing paragraph and is recomputed from those, so editing
+   * a default here cannot change one that already exists.
+   */
+  'settings.get': {
+    access: 'authenticated',
+    handler: settings.get,
+  },
+  'settings.update': {
+    access: 'Admin',
+    handler: settings.update,
   },
 
   'items.list': {
