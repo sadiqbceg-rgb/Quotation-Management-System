@@ -73,6 +73,9 @@ export const ACTION_NAMES = [
   'clients.list',
   'clients.create',
   'clients.update',
+  // Soft deactivation — Admin only, server-side. Never a delete: a customer row
+  // is the record of who the company quoted.
+  'clients.deactivate',
 
   // Settings
   'settings.get',

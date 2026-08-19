@@ -45,6 +45,10 @@ export const AUDITED_ACTIONS: readonly string[] = [
   'quotation.uploadToDrive',
   'quotation.recordTracking',
 
+  'clients.create',
+  'clients.update',
+  'clients.deactivate',
+
   'items.create',
   'items.update',
   'items.deactivate',
@@ -74,6 +78,7 @@ export const READ_ONLY_ACTIONS: readonly string[] = [
   'admin.listUsers',
   'quotation.get',
   'quotation.list',
+  'clients.list',
   'items.list',
   'terms.list',
   'persons.list',

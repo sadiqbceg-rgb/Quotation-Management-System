@@ -221,7 +221,24 @@ export default function NewQuotationPage() {
           canBackdateAcrossYears={isAdmin}
         />
 
-        <ClientInfoSection register={register} errors={errors} />
+        <ClientInfoSection
+          register={register}
+          errors={errors}
+          /*
+           * Prefill only. The chosen customer's id is deliberately NOT captured
+           * — the quotation carries client values, never a reference — so
+           * editing that customer later cannot change this quotation (§10.4,
+           * the same rule terms and the authorized person already follow).
+           */
+          onPickCustomer={(customer) => {
+            form.setValue('client.clientName', customer.clientName, { shouldValidate: true });
+            form.setValue('client.companyName', customer.companyName, { shouldValidate: true });
+            form.setValue('client.address', customer.address, { shouldValidate: true });
+            form.setValue('client.contactPerson', customer.contactPerson);
+            form.setValue('client.email', customer.email);
+            form.setValue('client.phone', customer.phone);
+          }}
+        />
 
         <QuotationItemsSection
           lineItems={lineItems}

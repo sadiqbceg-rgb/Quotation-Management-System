@@ -1,5 +1,6 @@
 import type { UseFormRegister, FieldErrors } from 'react-hook-form';
 import { Card } from '@/components/common/Card';
+import { CustomerPicker } from '@/components/client/CustomerPicker';
 import { Field } from '@/components/common/Field';
 import { Input } from '@/components/common/Input';
 import { Textarea } from '@/components/common/Textarea';
@@ -8,6 +9,20 @@ import type { QuotationFormValues } from '@/schemas/quotation-schema';
 export interface ClientInfoSectionProps {
   register: UseFormRegister<QuotationFormValues>;
   errors: FieldErrors<QuotationFormValues>;
+  /**
+   * Fill the fields below from a saved customer.
+   *
+   * Optional: omitting it hides the picker and leaves this section exactly as
+   * it was, which is what every existing test renders.
+   */
+  onPickCustomer?: (customer: {
+    clientName: string;
+    companyName: string;
+    address: string;
+    contactPerson: string;
+    email: string;
+    phone: string;
+  }) => void;
 }
 
 /**
@@ -21,9 +36,20 @@ export interface ClientInfoSectionProps {
  * `Attention:` — so the person filling the form sees the same wording the
  * client will see on the document.
  */
-export function ClientInfoSection({ register, errors }: ClientInfoSectionProps) {
+export function ClientInfoSection({ register, errors, onPickCustomer }: ClientInfoSectionProps) {
   return (
-    <Card title="Client Information" description="Required fields appear on the quotation header.">
+    <Card
+      title="Client Information"
+      description="Required fields appear on the quotation header."
+      /*
+       * The picker PREFILLS these fields; it does not bind them. The quotation
+       * stores the values saved here, and no customer id travels with it, so a
+       * later edit to the customer record cannot change this quotation.
+       */
+      actions={
+        onPickCustomer === undefined ? undefined : <CustomerPicker onSelect={onPickCustomer} />
+      }
+    >
       <div className="grid gap-4 sm:grid-cols-2">
         <Field
           label="Client Name"

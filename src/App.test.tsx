@@ -94,9 +94,17 @@ describe('placeholder pages', () => {
   });
 
   it('states honestly that a section is not implemented instead of showing sample data', () => {
-    renderInShell('/customers', <CustomersPage />);
-    expect(screen.getByText(/Customer library is not part of the current V1 release/i)).toBeInTheDocument();
-    expect(screen.getByText(/Customer details can be entered directly when creating a quotation/i)).toBeInTheDocument();
+    // Retargeted from Customers to Company Settings when the customer library
+    // was built. The guard is PRD §34 — a section that does not exist yet must
+    // say so rather than show demo content — and Company Settings is now the
+    // one section that is still a placeholder.
+    renderInShell('/settings', <SettingsPage />);
+    expect(
+      screen.getByText(/Company settings are managed by the administrator/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/no editable Company Settings module in the current V1 release/i),
+    ).toBeInTheDocument();
   });
 
   it('does not reserve a quotation number when the New Quotation page opens', async () => {

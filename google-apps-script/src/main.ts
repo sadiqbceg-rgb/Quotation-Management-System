@@ -30,6 +30,7 @@ import { runDailyBackup } from './backup/daily-backup';
 import { nowSeconds, shouldRenew, issueToken, verifyToken } from './auth/token';
 import { requireProperty } from './config/properties';
 import { configurationReport, healthPayload, API_VERSION } from './monitoring/health';
+import * as clients from './clients/handlers';
 import * as items from './items/handlers';
 import * as persons from './persons/handlers';
 import * as quotation from './quotation/handlers';
@@ -199,6 +200,35 @@ export const ACTIONS: Record<string, ActionDefinition> = {
   'quotation.recordTracking': {
     access: 'authenticated',
     handler: quotation.recordTracking,
+  },
+
+  /*
+   * Customer library (§40).
+   *
+   * `User` for read and write, matching `items.*` — the two are the same kind
+   * of thing: a shared library that anyone producing a quotation maintains as
+   * they work. Deactivation is Admin, because removing a customer from every
+   * future picker is a decision about company data rather than about the
+   * quotation someone happens to be writing.
+   *
+   * None of these touches a quotation. A quotation stores client VALUES, so
+   * editing a customer here cannot reach one that already exists.
+   */
+  'clients.list': {
+    access: 'authenticated',
+    handler: clients.list,
+  },
+  'clients.create': {
+    access: 'authenticated',
+    handler: clients.create,
+  },
+  'clients.update': {
+    access: 'authenticated',
+    handler: clients.update,
+  },
+  'clients.deactivate': {
+    access: 'Admin',
+    handler: clients.deactivate,
   },
 
   'items.list': {

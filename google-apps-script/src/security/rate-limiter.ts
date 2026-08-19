@@ -62,6 +62,13 @@ export const ACTION_LIMITS: Record<string, number> = {
   'admin.resetUserCredential': 10,
   'admin.setUserActive': 20,
   'admin.setUserRole': 20,
+  /*
+   * Customer library. Writes are cheap — one append or a few cell writes — but
+   * `nameExists` reads the whole sheet, so a loop is worth bounding.
+   */
+  'clients.create': 30,
+  'clients.update': 30,
+  'clients.deactivate': 20,
 };
 
 /**
