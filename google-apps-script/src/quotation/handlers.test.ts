@@ -3,7 +3,11 @@ import { installGasFakes, type GasEnvironment } from '../__fixtures__/gas-fakes'
 import { handlePost } from '../main';
 import { createPasswordRecord } from '../auth/password';
 import { createUser } from '../sheets/users-repository';
-import { QUOTATION_RECORDS_SHEET_NAME } from '../sheets/quotation-records-sheet';
+import {
+  QUOTATION_RECORDS_HEADERS,
+  QUOTATION_RECORDS_SHEET_NAME,
+} from '../sheets/quotation-records-sheet';
+import { TEST_ONLY_setDiscardLock } from './handlers';
 import { readLastSequence } from '../sheets/counters-sheet';
 import { createPerson, setSignatureFileId } from '../sheets/persons-sheet';
 
@@ -542,5 +546,437 @@ describe('injection and payload safety', () => {
       finalize: true,
     });
     expect(response.error?.code).toBe('VALIDATION_FAILED');
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Discarding is atomic (W-6) and never destroys the sheet (W-13)             */
+/* -------------------------------------------------------------------------- */
+
+describe('discarding under contention', () => {
+  afterEach(() => {
+    TEST_ONLY_setDiscardLock(null);
+  });
+
+  function saveDraft(draftId: string): void {
+    const response = call('quotation.save', {
+      quotation: validQuotation({ draftId }),
+      finalize: false,
+    });
+    expect(response.ok, JSON.stringify(response.error)).toBe(true);
+  }
+
+  it('does the check and the delete inside the lock', () => {
+    /*
+     * JavaScript is single-threaded, so a test cannot literally interleave two
+     * requests. What it CAN prove is that the record is read while the lock is
+     * held — which is the invariant. A check performed outside it is a snapshot
+     * a concurrent finalize could invalidate before the delete lands.
+     */
+    saveDraft('draft-lock-1');
+
+    let held = false;
+    let readsWhileHeld = 0;
+    TEST_ONLY_setDiscardLock({
+      tryLock: () => {
+        held = true;
+        return true;
+      },
+      releaseLock: () => {
+        held = false;
+      },
+    });
+    env.spreadsheet.onRead((sheetName: string) => {
+      if (sheetName === QUOTATION_RECORDS_SHEET_NAME && held) readsWhileHeld += 1;
+    });
+
+    const response = call('quotation.discardDraft', { draftId: 'draft-lock-1' });
+    env.spreadsheet.onRead(null);
+
+    expect(response.ok).toBe(true);
+    expect(readsWhileHeld).toBeGreaterThan(0);
+  });
+
+  it('releases the lock even when the discard is refused', () => {
+    let released = 0;
+    TEST_ONLY_setDiscardLock({ tryLock: () => true, releaseLock: () => { released += 1; } });
+
+    // Refused: no such draft. The `finally` has to run on every refusal path,
+    // or one bad request wedges the deployment for everyone.
+    const response = call('quotation.discardDraft', { draftId: 'draft-does-not-exist' });
+
+    expect(response.ok).toBe(false);
+    expect(released).toBe(1);
+  });
+
+  it('refuses rather than proceeding when the lock cannot be taken', () => {
+    saveDraft('draft-lock-3');
+    TEST_ONLY_setDiscardLock({ tryLock: () => false, releaseLock: () => undefined });
+
+    const response = call('quotation.discardDraft', { draftId: 'draft-lock-3' });
+
+    expect(response.error?.code).toBe('RATE_LIMITED');
+    // Not silently applied.
+    expect(call('quotation.get', { draftId: 'draft-lock-3' }).ok).toBe(true);
+  });
+
+  it('is idempotent: a repeated discard is refused, never a crash', () => {
+    saveDraft('draft-lock-4');
+
+    expect(call('quotation.discardDraft', { draftId: 'draft-lock-4' }).ok).toBe(true);
+    const second = call('quotation.discardDraft', { draftId: 'draft-lock-4' });
+
+    expect(second.error?.code).toBe('VALIDATION_FAILED');
+    expect(second.error?.message).toMatch(/could not be found/i);
+  });
+
+  it('keeps the sheet headers when the LAST record is discarded (W-13)', () => {
+    saveDraft('draft-only-1');
+    expect(call('quotation.discardDraft', { draftId: 'draft-only-1' }).ok).toBe(true);
+
+    /*
+     * The regression: the fallback cleared the sheet and rewrote the header row
+     * only when data rows remained, so removing the last record left a
+     * headerless sheet that every later read ran against.
+     */
+    const sheet = env.spreadsheet.sheets.get(QUOTATION_RECORDS_SHEET_NAME);
+    expect(sheet?.rows[0]).toEqual([...QUOTATION_RECORDS_HEADERS]);
+    expect(env.spreadsheet.dataRows(QUOTATION_RECORDS_SHEET_NAME)).toEqual([]);
+  });
+
+  it('still saves a new quotation after the last record was discarded', () => {
+    saveDraft('draft-only-2');
+    call('quotation.discardDraft', { draftId: 'draft-only-2' });
+
+    // Proves the sheet is still usable, not just that the header row looks right.
+    saveDraft('draft-after-1');
+    expect(call('quotation.get', { draftId: 'draft-after-1' }).ok).toBe(true);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* A library item becomes part of the snapshot (W-5)                          */
+/* -------------------------------------------------------------------------- */
+
+describe('a row prefilled from the item library', () => {
+  function createLibraryItem(name: string, unit: string): string {
+    const response = call('items.create', { category: 'Manpower', name, defaultUnit: unit });
+    expect(response.ok, JSON.stringify(response.error)).toBe(true);
+    return (response.data as { id: string }).id;
+  }
+
+  function storedLines(draftId: string): Array<Record<string, unknown>> {
+    const response = call('quotation.get', { draftId });
+    expect(response.ok, JSON.stringify(response.error)).toBe(true);
+    const quotation = (response.data as { quotation: Record<string, unknown> }).quotation;
+    return quotation['lines'] as Array<Record<string, unknown>>;
+  }
+
+  it('stores the description and unit as VALUES on the quotation', () => {
+    createLibraryItem('TEST_ONLY Technician', 'Hour');
+
+    // Exactly what the picker copies into the row — no id.
+    call('quotation.save', {
+      quotation: validQuotation({
+        draftId: 'draft-item-1',
+        lines: [
+          {
+            category: 'Manpower',
+            description: 'TEST_ONLY Technician',
+            quantity: 1_000,
+            unit: 'Hour',
+            unitPrice: 2_000,
+            remarks: '',
+          },
+        ],
+      }),
+      finalize: false,
+    });
+
+    expect(storedLines('draft-item-1')[0]).toMatchObject({
+      description: 'TEST_ONLY Technician',
+      unit: 'Hour',
+    });
+  });
+
+  it('keeps those values after the library item is RENAMED', () => {
+    const id = createLibraryItem('TEST_ONLY Technician', 'Hour');
+    call('quotation.save', {
+      quotation: validQuotation({
+        draftId: 'draft-item-2',
+        lines: [
+          {
+            category: 'Manpower',
+            description: 'TEST_ONLY Technician',
+            quantity: 1_000,
+            unit: 'Hour',
+            unitPrice: 2_000,
+            remarks: '',
+          },
+        ],
+      }),
+      finalize: false,
+    });
+
+    call('items.update', { id, name: 'TEST_ONLY Renamed Entirely', defaultUnit: 'Day' });
+
+    // The quotation was quoted with the old description; a catalogue edit must
+    // not rewrite what a client was sent.
+    expect(storedLines('draft-item-2')[0]).toMatchObject({
+      description: 'TEST_ONLY Technician',
+      unit: 'Hour',
+    });
+  });
+
+  it('keeps them after the library item is DEACTIVATED', () => {
+    const id = createLibraryItem('TEST_ONLY Technician', 'Hour');
+    call('quotation.save', {
+      quotation: validQuotation({
+        draftId: 'draft-item-3',
+        lines: [
+          {
+            category: 'Manpower',
+            description: 'TEST_ONLY Technician',
+            quantity: 1_000,
+            unit: 'Hour',
+            unitPrice: 2_000,
+            remarks: '',
+          },
+        ],
+      }),
+      finalize: false,
+    });
+
+    call('items.deactivate', { id, active: false });
+
+    expect(storedLines('draft-item-3')[0]).toMatchObject({ description: 'TEST_ONLY Technician' });
+  });
+
+  it('stores no item id, so there is no reference to follow', () => {
+    const id = createLibraryItem('TEST_ONLY Technician', 'Hour');
+    call('quotation.save', {
+      quotation: validQuotation({
+        draftId: 'draft-item-4',
+        lines: [
+          {
+            category: 'Manpower',
+            description: 'TEST_ONLY Technician',
+            quantity: 1_000,
+            unit: 'Hour',
+            unitPrice: 2_000,
+            remarks: '',
+          },
+        ],
+      }),
+      finalize: false,
+    });
+
+    expect(JSON.stringify(storedLines('draft-item-4'))).not.toContain(id);
+  });
+
+  it('ignores an item id a client tries to smuggle onto a line', () => {
+    const id = createLibraryItem('TEST_ONLY Technician', 'Hour');
+
+    call('quotation.save', {
+      quotation: validQuotation({
+        draftId: 'draft-item-5',
+        lines: [
+          {
+            category: 'Manpower',
+            itemId: id,
+            description: 'TEST_ONLY Typed By Hand',
+            quantity: 1_000,
+            unit: 'Hour',
+            unitPrice: 2_000,
+            remarks: '',
+          },
+        ],
+      }),
+      finalize: false,
+    });
+
+    /*
+     * The validator builds each line from the fields it knows about, so an
+     * extra key is dropped rather than trusted. A client cannot point a line at
+     * a catalogue record and have the server resolve it.
+     */
+    const line = storedLines('draft-item-5')[0];
+    expect(line?.['itemId']).toBeUndefined();
+    expect(line?.['description']).toBe('TEST_ONLY Typed By Hand');
+  });
+
+  it('still accepts a row typed entirely by hand', () => {
+    // No library item exists at all here.
+    call('quotation.save', {
+      quotation: validQuotation({
+        draftId: 'draft-item-6',
+        lines: [
+          {
+            category: 'Manpower',
+            description: 'TEST_ONLY Nothing In The Library',
+            quantity: 2_000,
+            unit: 'Nos',
+            unitPrice: 5_000,
+            remarks: '',
+          },
+        ],
+      }),
+      finalize: false,
+    });
+
+    expect(storedLines('draft-item-6')[0]).toMatchObject({
+      description: 'TEST_ONLY Nothing In The Library',
+      unit: 'Nos',
+    });
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Editing a saved quotation (W-4)                                            */
+/* -------------------------------------------------------------------------- */
+
+describe('editing a saved quotation', () => {
+  function stored(draftId: string): Record<string, unknown> {
+    const response = call('quotation.get', { draftId });
+    expect(response.ok, JSON.stringify(response.error)).toBe(true);
+    return (response.data as { quotation: Record<string, unknown> }).quotation;
+  }
+
+  it('updates a draft in place rather than creating a second record', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: false });
+    call('quotation.save', {
+      quotation: validQuotation({ quotationFor: 'TEST_ONLY revised scope' }),
+      finalize: false,
+    });
+
+    expect(env.spreadsheet.dataRows(QUOTATION_RECORDS_SHEET_NAME)).toHaveLength(1);
+    expect(stored('draft-0001')['quotationFor']).toBe('TEST_ONLY revised scope');
+  });
+
+  it('allocates NO quotation number when a draft is edited', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: false });
+    call('quotation.save', {
+      quotation: validQuotation({ quotationFor: 'TEST_ONLY revised' }),
+      finalize: false,
+    });
+
+    expect(readLastSequence(2026)).toBe(0);
+  });
+
+  it('PRESERVES the issued number when a finalized quotation is edited', () => {
+    const issued = (
+      call('quotation.save', { quotation: validQuotation(), finalize: true }).data as {
+        quotationNumber: string;
+      }
+    ).quotationNumber;
+
+    const edited = call('quotation.save', {
+      quotation: validQuotation({ quotationFor: 'TEST_ONLY corrected wording' }),
+      finalize: true,
+    });
+
+    expect((edited.data as { quotationNumber: string }).quotationNumber).toBe(issued);
+    // The counter did not move: editing must never burn a second number.
+    expect(readLastSequence(2026)).toBe(1);
+  });
+
+  it('refuses a submitted number that disagrees with the stored one (§7.7)', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: true });
+
+    const response = call('quotation.save', {
+      quotation: validQuotation({ quotationNumber: 'SFC/RUH/QTN/2026/999' }),
+      finalize: true,
+    });
+
+    expect(response.error?.code).toBe('QUOTATION_NUMBER_IMMUTABLE');
+  });
+
+  it('recomputes the totals from the edited lines', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: false });
+
+    call('quotation.save', {
+      quotation: validQuotation({
+        lines: [
+          {
+            category: 'Manpower',
+            description: 'TEST_ONLY General Labour',
+            quantity: 80_000,
+            unit: 'Hour',
+            unitPrice: 2_000,
+            remarks: '',
+          },
+        ],
+      }),
+      finalize: false,
+    });
+
+    // Doubling the quantity doubles the subtotal; the server computes it, the
+    // client's figure is never trusted.
+    const totals = stored('draft-0001')['totals'] as Record<string, unknown>;
+    expect(totals['subtotal']).toBe(160_000);
+  });
+
+  it('rejects an edit whose client-supplied totals disagree', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: false });
+
+    const response = call('quotation.save', {
+      quotation: validQuotation({
+        totals: { subtotal: 1, discount: 0, vat: 0, grandTotal: 1, categorySubtotals: {} },
+      }),
+      finalize: false,
+    });
+
+    expect(response.error?.code).toBe('TOTALS_MISMATCH');
+  });
+
+  it('revalidates every field on an edit, not just on creation', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: true });
+
+    const response = call('quotation.save', {
+      quotation: validQuotation({ client: { clientName: '', companyName: '', address: '' } }),
+      finalize: true,
+    });
+
+    expect(response.error?.code).toBe('VALIDATION_FAILED');
+  });
+
+  it('refuses an edit with no session at all', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: false });
+
+    expect(
+      callAnonymous('quotation.save', { quotation: validQuotation(), finalize: false }).error?.code,
+    ).toBe('AUTH_REQUIRED');
+  });
+
+  it('keeps createdAt and createdBy across an edit', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: false });
+    const before = call('quotation.get', { draftId: 'draft-0001' }).data as {
+      createdBy: string;
+      createdAt: string;
+    };
+
+    call('quotation.save', {
+      quotation: validQuotation({ quotationFor: 'TEST_ONLY revised' }),
+      finalize: false,
+    });
+
+    const after = call('quotation.get', { draftId: 'draft-0001' }).data as {
+      createdBy: string;
+      createdAt: string;
+    };
+    // Rewriting the creation metadata on every edit would destroy the trail.
+    expect(after.createdBy).toBe(before.createdBy);
+    expect(after.createdAt).toBe(before.createdAt);
+  });
+
+  it('leaves an edited draft discardable, and a numbered one not', () => {
+    call('quotation.save', { quotation: validQuotation(), finalize: false });
+    call('quotation.save', {
+      quotation: validQuotation({ quotationFor: 'TEST_ONLY revised' }),
+      finalize: false,
+    });
+
+    // Editing does not finalize, so discard still applies.
+    expect(call('quotation.discardDraft', { draftId: 'draft-0001' }).ok).toBe(true);
   });
 });

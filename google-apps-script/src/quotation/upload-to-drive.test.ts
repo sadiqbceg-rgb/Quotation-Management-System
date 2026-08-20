@@ -51,6 +51,8 @@ interface UploadData {
   pathLabel: string;
   files: { pdf: DriveTargetJson | null; docx: DriveTargetJson | null };
   missing: string[];
+  /** `recorded` only when the archive is complete; `skipped` on a partial save. */
+  tracking: { status: string };
 }
 
 let env: GasEnvironment;
@@ -220,8 +222,41 @@ describe('a successful save (PRD §30 steps 5–12)', () => {
     expect(data.missing).toEqual([]);
 
     for (const target of [data.folder, data.files.pdf, data.files.docx]) {
-      expect(target?.url).toMatch(/^https:\/\/drive\.google\.com\//);
+      expect(target?.url).toMatch(/^https:\/\/(drive|docs)\.google\.com\//);
     }
+  });
+
+  it('succeeds when Drive returns a Docs editor URL for the Word file', () => {
+    /*
+     * The end-to-end guard for the defect that made every save report "The Word
+     * document did not upload".
+     *
+     * Drive answers `getUrl()` with the host that can OPEN the file: the Drive
+     * viewer for a PDF, the Google Docs editor for a .docx. The URL validator
+     * accepted only `drive.google.com`, so the DOCX uploaded and its link was
+     * then thrown away — reported as a partial save with the Word file missing,
+     * and the register row withheld.
+     */
+    issueQuotation();
+    const response = upload({ draftId: 'draft-0001', documents: bothDocuments() });
+    const data = response.data as UploadData;
+
+    expect(data.outcome).toBe('success');
+    expect(data.missing).toEqual([]);
+    expect(data.files.pdf?.url).toMatch(/^https:\/\/drive\.google\.com\/file\/d\//);
+    expect(data.files.docx?.url).toMatch(/^https:\/\/docs\.google\.com\/document\/d\//);
+  });
+
+  it('records BOTH file links on the register row', () => {
+    // A partial save deliberately writes no register row, so this also proves
+    // the tracking row is reached at all.
+    issueQuotation();
+    const response = upload({ draftId: 'draft-0001', documents: bothDocuments() });
+    const data = response.data as UploadData;
+
+    expect(data.tracking.status).toBe('recorded');
+    expect(data.files.pdf?.fileId.length).toBeGreaterThan(0);
+    expect(data.files.docx?.fileId.length).toBeGreaterThan(0);
   });
 
   it('names the folder after the number the application issued', () => {
@@ -330,6 +365,84 @@ describe('retrying (PRD §37)', () => {
     expect(completed.missing).toEqual([]);
     // The PDF was never re-uploaded, so it kept its id and its URL.
     expect(completed.files.pdf?.fileId).toBe(partial.files.pdf?.fileId);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+
+describe('a failed upload is diagnosable (W-1)', () => {
+  const DRIVE_REASON = 'TEST_ONLY storage quota exceeded for folder 1AbC-secret-id';
+
+  function captureErrors(): { logged: string[]; restore: () => void } {
+    const logged: string[] = [];
+    const spy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      logged.push(args.map((value) => String(value)).join(' '));
+    });
+    return { logged, restore: () => { spy.mockRestore(); } };
+  }
+
+  /**
+   * A PARTIAL upload: the PDF is already filed, so a DOCX failure is converted
+   * into an outcome and never reaches the router. That is the path where the
+   * reason used to disappear completely.
+   */
+  function partialUpload(): { response: Envelope; logged: string[] } {
+    issueQuotation();
+    upload({ draftId: 'draft-0001', documents: { pdf: TEST_ONLY_documentBase64('pdf') } });
+
+    const { logged, restore } = captureErrors();
+    env.drive.failNextCreate(DRIVE_REASON);
+    const response = upload({
+      draftId: 'draft-0001',
+      documents: { docx: TEST_ONLY_documentBase64('docx') },
+    });
+    restore();
+
+    return { response, logged };
+  }
+
+  it('reports the save as partial rather than failed', () => {
+    const { response } = partialUpload();
+
+    expect((response.data as UploadData).outcome).toBe('partial');
+    expect((response.data as UploadData).missing).toEqual(['docx']);
+  });
+
+  it('writes the real Drive reason to the server log', () => {
+    const { logged } = partialUpload();
+
+    // Before this fix the partial path logged nothing at all.
+    expect(logged.join('\n')).toContain(DRIVE_REASON);
+  });
+
+  it('names which document failed, so the log says what to retry', () => {
+    const { logged } = partialUpload();
+
+    expect(logged.join('\n')).toMatch(/\[drive\][^\n]*docx/);
+  });
+
+  it('sends the client a generic body with no folder id in it', () => {
+    const { response } = partialUpload();
+    const body = JSON.stringify(response);
+
+    // The reason belongs in the log, never on the wire (§19.9).
+    expect(body).not.toContain('1AbC-secret-id');
+    expect(body).not.toContain(DRIVE_REASON);
+  });
+
+  it('logs the reason when the whole upload fails, too', () => {
+    issueQuotation();
+
+    const { logged, restore } = captureErrors();
+    env.drive.failNextCreate(DRIVE_REASON);
+    const response = upload({ draftId: 'draft-0001', documents: bothDocuments() });
+    restore();
+
+    // Nothing was stored, so this one DOES reach the router — which logs it
+    // because the typed error carries a `detail`.
+    expect(response.ok).toBe(false);
+    expect(logged.join('\n')).toContain(DRIVE_REASON);
+    expect(JSON.stringify(response)).not.toContain(DRIVE_REASON);
   });
 });
 

@@ -114,6 +114,159 @@ describe('the editable defaults', () => {
   });
 });
 
+/* -------------------------------------------------------------------------- */
+/* Clearing a numeric field (R-2)                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * An empty box is empty, not zero.
+ *
+ * The numeric fields used to hold parsed NUMBERS, with anything unparseable
+ * folded to 0. Backspacing a field to retype it put a `0` in it, and 0 is a
+ * legal VAT rate — so a cleared box plus a Save set the company default to 0%
+ * and every quotation written afterwards started there.
+ */
+describe('clearing a numeric field', () => {
+  it('leaves the VAT box empty rather than showing 0', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const vat = await screen.findByLabelText(/default vat rate/i);
+    await user.clear(vat);
+
+    expect(vat).toHaveValue(null);
+  });
+
+  it('leaves the validity box empty rather than showing 0', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const days = await screen.findByLabelText(/quotation validity/i);
+    await user.clear(days);
+
+    expect(days).toHaveValue(null);
+  });
+
+  it('refuses to save a cleared VAT rate', async () => {
+    const update = vi.spyOn(settingsService, 'updateSettings').mockResolvedValue(settings());
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.clear(await screen.findByLabelText(/default vat rate/i));
+    await user.click(screen.getByRole('button', { name: /save settings/i }));
+
+    // Nothing reaches the server, so nothing can be stored as 0%.
+    expect(update).not.toHaveBeenCalled();
+    expect(await screen.findByText(/not the same as 0%/i)).toBeInTheDocument();
+  });
+
+  it('refuses to save a cleared validity period', async () => {
+    const update = vi.spyOn(settingsService, 'updateSettings').mockResolvedValue(settings());
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.clear(await screen.findByLabelText(/quotation validity/i));
+    await user.click(screen.getByRole('button', { name: /save settings/i }));
+
+    expect(update).not.toHaveBeenCalled();
+    expect(await screen.findByText(/number of days a quotation stays valid/i)).toBeInTheDocument();
+  });
+
+  it('still allows a DELIBERATE zero VAT rate', async () => {
+    const update = vi.spyOn(settingsService, 'updateSettings').mockResolvedValue(settings());
+    const user = userEvent.setup();
+    renderPage();
+
+    const vat = await screen.findByLabelText(/default vat rate/i);
+    await user.clear(vat);
+    await user.type(vat, '0');
+    await user.click(screen.getByRole('button', { name: /save settings/i }));
+
+    // 0% is a legal rate. The fix distinguishes "cleared" from "typed 0";
+    // it does not forbid zero.
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ defaultVatRateBasisPoints: 0 }),
+        expect.any(String),
+      );
+    });
+  });
+
+  it('lets a field be cleared and retyped without fighting the caret', async () => {
+    const update = vi.spyOn(settingsService, 'updateSettings').mockResolvedValue(settings());
+    const user = userEvent.setup();
+    renderPage();
+
+    const days = await screen.findByLabelText(/quotation validity/i);
+    await user.clear(days);
+    await user.type(days, '45');
+
+    // Asserted BEFORE saving: a successful save resyncs the form to whatever
+    // the server echoes back, which here is the 7 in the fixture.
+    // Previously the box refilled with 0 the moment it was cleared, so this
+    // same sequence produced "045".
+    expect(days).toHaveValue(45);
+
+    await user.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ quotationValidityDays: 45 }),
+        expect.any(String),
+      );
+    });
+  });
+
+  it('clears the refusal once the field is filled in again', async () => {
+    const update = vi.spyOn(settingsService, 'updateSettings').mockResolvedValue(settings());
+    const user = userEvent.setup();
+    renderPage();
+
+    const vat = await screen.findByLabelText(/default vat rate/i);
+    await user.clear(vat);
+    await user.click(screen.getByRole('button', { name: /save settings/i }));
+    await screen.findByText(/not the same as 0%/i);
+
+    await user.type(vat, '5');
+    await user.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ defaultVatRateBasisPoints: 500 }),
+        expect.any(String),
+      );
+    });
+  });
+
+  it('adds no client-side rule beyond "not empty"', async () => {
+    const update = vi.spyOn(settingsService, 'updateSettings').mockResolvedValue(settings());
+    const user = userEvent.setup();
+    renderPage();
+
+    const vat = await screen.findByLabelText(/default vat rate/i);
+    await user.clear(vat);
+    await user.type(vat, '12.5');
+    await user.click(screen.getByRole('button', { name: /save settings/i }));
+
+    /*
+     * A fraction, passed straight through as 1250 basis points — not rounded,
+     * clamped or second-guessed on the way. R-2 introduced exactly one
+     * client-side rule, that a box may not be EMPTY, because an empty box is
+     * the one thing the server can never report back: it would arrive as a
+     * number nobody typed. Every other rule stays the server's (§19.3), and
+     * the endpoint is public, so a browser-side check would secure nothing.
+     *
+     * That the server's own refusal still reaches the right field is covered
+     * by "shows the server's field error" above.
+     */
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ defaultVatRateBasisPoints: 1250 }),
+        expect.any(String),
+      );
+    });
+  });
+});
+
 describe('the deployment configuration block', () => {
   it('reports the quotation number format', async () => {
     renderPage();

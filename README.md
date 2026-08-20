@@ -36,13 +36,22 @@ cp .env.example .env.local     # then set VITE_GAS_ENDPOINT
 npm run dev
 ```
 
+That is the whole first-time setup. `npm run dev` regenerates the document
+assets first — see below — so a fresh clone works without any extra step.
+
+`VITE_GAS_ENDPOINT` is the only value you must supply, and it is not a secret
+(see `DEPLOYMENT.md` §2.3). **No production secret is needed to develop**: the
+session HMAC secret, the password pepper and the Drive and Sheets ids all live
+in Apps Script Script Properties, never in this repository and never in the
+browser bundle.
+
 The backend is a separate deployment — see `google-apps-script/README.md`.
 
 ## Scripts
 
 | Command             | Purpose                                                     |
 | ------------------- | ----------------------------------------------------------- |
-| `npm run dev`       | Vite dev server                                             |
+| `npm run dev`       | Prepare assets, then the Vite dev server                     |
 | `npm run build`     | Prepare assets, typecheck, then production build to `dist/` |
 | `npm run assets`    | Regenerate `src/assets/generated/` from `reference/`        |
 | `npm run typecheck` | `tsc --noEmit` for the app, Apps Script **and** scripts     |
@@ -116,8 +125,11 @@ build and tests green.
 | 10 Google Drive          | complete          |
 | 11 Google Sheets         | complete          |
 | **12 Security**          | **complete**      |
-| 13 Testing               | not started       |
-| 14 Production Deployment | not started       |
+| 13 Testing               | complete          |
+| **14 Production Deployment** | **complete**  |
+
+Built since the numbered phases: Admin user management, the customer library,
+and editable Company Settings.
 
 ---
 
@@ -133,7 +145,7 @@ reference/                       ← read-only, the authority for every measurem
   company-logo.png               a JPEG, despite the extension
   company-seal.png               a PNG with NO alpha channel
         │
-        ▼  npm run assets  (also runs in `prebuild`)
+        ▼  npm run assets  (also runs in `predev` and `prebuild`)
 src/assets/generated/            ← git-ignored, reproducible, never committed
 ```
 

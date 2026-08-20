@@ -68,6 +68,19 @@ export const QUOTATION_LIMITS = {
   maxCategories: 3,
   /** A quotation date may not be more than this many years from today. */
   dateRangeYears: 5,
+  /**
+   * How long a quotation may declare itself valid for, in days.
+   *
+   * ONE set of bounds, used in two places that must agree: the Company Settings
+   * default an administrator types, and the `validityDays` snapshotted onto each
+   * quotation. Stating them separately would let Settings accept a number the
+   * quotation validator then rejects, and the user would have no way to tell
+   * which of the two was wrong.
+   *
+   * Anything outside this is a typo, not a business decision.
+   */
+  validityDaysMin: 1,
+  validityDaysMax: 365,
 } as const;
 
 export const UPLOAD_LIMITS = {
@@ -87,7 +100,26 @@ export const PATTERNS = {
   pathSegment: /^[A-Za-z0-9 _-]{1,120}$/,
   /** The file-safe quotation number used for folders and filenames. */
   fileSafeNumber: /^[A-Z0-9]+(-[A-Z0-9]+)+$/,
-  driveUrl: /^https:\/\/drive\.google\.com\//,
+  /**
+   * A link Drive itself produced for a file or folder it stores.
+   *
+   * BOTH hosts are required, and this is not a loosening. `DriveApp`'s
+   * `getUrl()` returns the host that can OPEN the file, and that depends on the
+   * file's type:
+   *
+   *   a PDF   -> https://drive.google.com/file/d/<id>/view
+   *   a DOCX  -> https://docs.google.com/document/d/<id>/edit
+   *
+   * because Drive knows the Google Docs editor can open an Office document.
+   * Accepting only `drive.google.com` therefore rejected the URL of every
+   * successfully uploaded Word file, and the upload was reported as a failure.
+   *
+   * It stays an allowlist of exactly these two Google hosts. The point of the
+   * check is refusing a fabricated or malformed link (PRD §34), and that
+   * survives: nothing else is accepted, and the leading `https://` is anchored
+   * so `https://drive.google.com.evil.test/` cannot match.
+   */
+  driveUrl: /^https:\/\/(drive|docs)\.google\.com\//,
   /**
    * A Saudi (ZATCA) VAT registration number: 15 digits, first and last both 3.
    *

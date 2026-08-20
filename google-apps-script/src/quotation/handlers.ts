@@ -56,6 +56,11 @@ function readString(payload: Record<string, unknown>, key: string): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+/** A stored JSON number, or nothing. Anything else in the cell is not a number. */
+function integerOrUndefined(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) ? value : undefined;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Reserve                                                                    */
 /* -------------------------------------------------------------------------- */
@@ -163,6 +168,23 @@ export function save(payload: unknown, context: HandlerContext): SaveResponse {
   // reset an Approved quotation back to Pending (§17.2).
   const status: QuotationStatus = existing?.status ?? 'Pending';
 
+  /*
+   * Validity days — the stored snapshot wins over an omission.
+   *
+   * The same shape as `quotationNumber` and `status` above: what the record
+   * already holds is authoritative, and the request may replace it but never
+   * silently erase it. A client that re-saves an existing quotation without
+   * sending `validityDays` — an older build, a caller talking to the endpoint
+   * directly — must not strip a quotation of the validity it was issued with,
+   * because nothing else in the system can recover that number afterwards.
+   *
+   * Nothing here consults Company Settings. The default is applied once, when
+   * the quotation is first written, by the client that creates it.
+   */
+  const storedValidityDays =
+    existing === null ? undefined : integerOrUndefined(parsePayload(existing.payload).validityDays);
+  const validityDays = validated.validityDays ?? storedValidityDays;
+
   const stored = JSON.stringify({
     draftId: validated.draftId,
     quotationNumber,
@@ -183,6 +205,9 @@ export function save(payload: unknown, context: HandlerContext): SaveResponse {
     totals: validated.totals,
     discountRateBasisPoints: validated.discountRateBasisPoints,
     vatRateBasisPoints: validated.vatRateBasisPoints,
+    // The Company Settings default as it stood when this quotation was created.
+    // Stored beside the VAT rate for exactly the same reason.
+    validityDays,
   });
 
   const result =
@@ -510,6 +535,8 @@ interface StoredPayload {
   lines?: unknown;
   discountRateBasisPoints?: unknown;
   vatRateBasisPoints?: unknown;
+  /** Absent on a quotation stored before this field existed. */
+  validityDays?: unknown;
 }
 
 function parsePayload(payload: string): StoredPayload {
@@ -658,6 +685,52 @@ export function get(payload: unknown, context: HandlerContext): GetResponse {
 /* Status                                                                     */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * How long to wait for the discard lock. Apps Script caps this at 30 s.
+ */
+export const DISCARD_LOCK_TIMEOUT_MS = 30_000;
+
+/** Injectable so a test can drive the lock and observe the critical section. */
+export interface DiscardLock {
+  tryLock: (timeoutMs: number) => boolean;
+  releaseLock: () => void;
+}
+
+let discardLockOverride: DiscardLock | null = null;
+
+/** Tests only. */
+export function TEST_ONLY_setDiscardLock(lock: DiscardLock | null): void {
+  discardLockOverride = lock;
+}
+
+function defaultDiscardLock(): DiscardLock {
+  // getScriptLock, not getUserLock: the race is between two REQUESTS touching
+  // the same record, and they may come from different people.
+  return LockService.getScriptLock();
+}
+
+/**
+ * Discard a draft that has not been issued a number.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE WHOLE THING IS ONE CRITICAL SECTION
+ * ---------------------------------------------------------------------------
+ * The read, the "has it been numbered?" check and the delete have to be
+ * atomic. Without the lock:
+ *
+ *   - a discard can read "no number yet", a concurrent finalize can then issue
+ *     one, and the discard deletes a quotation that now HAS a number. The
+ *     number is burned, the record is gone, and the counter has moved;
+ *   - two simultaneous discards both read the row and both delete, and the
+ *     second `deleteRow` shifts an unrelated record out from under a row
+ *     number another request is holding.
+ *
+ * `flush()` before release makes the delete durable, so the next holder cannot
+ * read a row this one has already removed.
+ *
+ * Idempotency is preserved: a second discard of the same draft finds nothing
+ * and is refused with the same "could not be found" message, never a crash.
+ */
 export function discardDraft(
   payload: unknown,
   context: HandlerContext,
@@ -670,32 +743,44 @@ export function discardDraft(
     throw new ApiError('VALIDATION_FAILED', 'A valid draft identifier is required.');
   }
 
-  const record = records.findByDraftId(draftId);
-  if (record === null) {
-    throw new ApiError('VALIDATION_FAILED', 'That draft could not be found.');
+  const lock = discardLockOverride ?? defaultDiscardLock();
+  if (!lock.tryLock(DISCARD_LOCK_TIMEOUT_MS)) {
+    throw new ApiError('RATE_LIMITED', 'The system is busy. Please try again.');
   }
 
-  if (record.quotationNumber.length > 0) {
-    throw new ApiError(
-      'VALIDATION_FAILED',
-      'This quotation has already received a quotation number and cannot be discarded.',
-    );
+  try {
+    const record = records.findByDraftId(draftId);
+    if (record === null) {
+      throw new ApiError('VALIDATION_FAILED', 'That draft could not be found.');
+    }
+
+    if (record.quotationNumber.length > 0) {
+      throw new ApiError(
+        'VALIDATION_FAILED',
+        'This quotation has already received a quotation number and cannot be discarded.',
+      );
+    }
+
+    if (record.createdBy.length > 0 && caller.email !== record.createdBy) {
+      throw new ApiError('FORBIDDEN', 'Only the creator of this draft can discard it.');
+    }
+
+    records.deleteByDraftId(draftId);
+    SpreadsheetApp.flush();
+
+    writeAudit({
+      actor: caller.email,
+      action: 'quotation.discardDraft',
+      target: draftId,
+      outcome: 'success',
+      requestId: context.requestId,
+    });
+
+    return { success: true, deletedDraftId: draftId };
+  } finally {
+    // Always released, including on every refusal above.
+    lock.releaseLock();
   }
-
-  if (record.createdBy.length > 0 && caller.email !== record.createdBy) {
-    throw new ApiError('FORBIDDEN', 'Only the creator of this draft can discard it.');
-  }
-
-  records.deleteByDraftId(draftId);
-  writeAudit({
-    actor: caller.email,
-    action: 'quotation.discardDraft',
-    target: draftId,
-    outcome: 'success',
-    requestId: context.requestId,
-  });
-
-  return { success: true, deletedDraftId: draftId };
 }
 
 export function updateStatus(

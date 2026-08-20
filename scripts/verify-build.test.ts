@@ -21,12 +21,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { testOutputDir } from '../test/helpers/temp-output';
 import {
+  checkAppEnv,
   checkArtefacts,
   checkLazyLoading,
+  checkProductionEnvironment,
   endpointFailures,
   sizeReport,
-  verifyBuild,
   type Failure,
+  verifyBuild,
 } from './verify-build';
 
 /* -------------------------------------------------------------------------- */
@@ -398,5 +400,98 @@ describe('pointed at a directory that is not a build', () => {
 
   it('reports a zero entry size rather than guessing at one', () => {
     expect(sizeReport([]).entryBytes).toBe(0);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Production environment (W-2)                                               */
+/* -------------------------------------------------------------------------- */
+
+const PROD_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxTESTONLYdeployment000000/exec';
+
+function artefact(text: string): { path: string; name: string; bytes: number; text: string } {
+  return { path: `/dist/${'index.js'}`, name: 'index.js', bytes: text.length, text };
+}
+
+describe('the app environment', () => {
+  it('is not enforced when the build does not declare production', () => {
+    // A developer running deploy:check locally must not be blocked.
+    expect(checkAppEnv([artefact('x')], { VITE_APP_ENV: 'development' })).toEqual([]);
+    expect(checkAppEnv([artefact('x')], {})).toEqual([]);
+  });
+
+  it('refuses a value that is neither production nor development', () => {
+    const failures = checkAppEnv([artefact('x')], { VITE_APP_ENV: 'staging' });
+
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.detail).toMatch(/must be "production" or "development"/);
+  });
+
+  it('refuses a production build that carries development mode', () => {
+    const failures = checkAppEnv([artefact('VITE_APP_ENV:"development"')], {
+      VITE_APP_ENV: 'production',
+    });
+
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.check).toBe('app environment');
+  });
+
+  it('passes a clean production build', () => {
+    expect(checkAppEnv([artefact(PROD_ENDPOINT)], { VITE_APP_ENV: 'production' })).toEqual([]);
+  });
+});
+
+describe('the production endpoint', () => {
+  it('is not checked unless the build declares production', () => {
+    expect(checkProductionEnvironment([artefact('nothing here')], {})).toEqual([]);
+    expect(
+      checkProductionEnvironment([artefact('nothing here')], { VITE_APP_ENV: 'development' }),
+    ).toEqual([]);
+  });
+
+  it('refuses a production build with no endpoint at all', () => {
+    const failures = checkProductionEnvironment([artefact('no endpoint')], {
+      VITE_APP_ENV: 'production',
+    });
+
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.detail).toMatch(/VITE_GAS_ENDPOINT/);
+  });
+
+  it('accepts a single HTTPS /exec endpoint', () => {
+    expect(
+      checkProductionEnvironment([artefact(PROD_ENDPOINT)], { VITE_APP_ENV: 'production' }),
+    ).toEqual([]);
+  });
+
+  it('refuses a /dev URL, which needs a sign-in the SPA cannot complete', () => {
+    const dev = 'https://script.google.com/macros/s/AKfycbxTESTONLYdeployment000000/dev';
+    const failures = checkProductionEnvironment([artefact(dev)], { VITE_APP_ENV: 'production' });
+
+    expect(failures.some((failure) => /\/exec/.test(failure.detail))).toBe(true);
+  });
+
+  it('refuses two different endpoints in one bundle', () => {
+    const second = 'https://script.google.com/macros/s/AKfycbxTESTONLYdifferent00000/exec';
+    const failures = checkProductionEnvironment([artefact(`${PROD_ENDPOINT} ${second}`)], {
+      VITE_APP_ENV: 'production',
+    });
+
+    expect(failures.some((failure) => /different endpoints/.test(failure.detail))).toBe(true);
+  });
+
+  it('does NOT pretend to tell development from production', () => {
+    /*
+     * Both are `https://script.google.com/macros/s/<opaque>/exec` and Google
+     * encodes nothing about the environment in the id. A heuristic here would
+     * either block a correct deploy or wave through the wrong endpoint while
+     * appearing to have checked it, so this deliberately passes both and the
+     * comparison stays a documented manual step.
+     */
+    const looksLikeDev = 'https://script.google.com/macros/s/AKfycbxTESTONLYdevdeploy000000/exec';
+
+    expect(
+      checkProductionEnvironment([artefact(looksLikeDev)], { VITE_APP_ENV: 'production' }),
+    ).toEqual([]);
   });
 });

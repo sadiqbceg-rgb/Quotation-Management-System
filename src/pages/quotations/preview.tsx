@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { PageHeader } from '@/components/common/PageHeader';
 import { Card } from '@/components/common/Card';
@@ -17,7 +17,7 @@ import { RetryUpload } from '@/components/quotation/RetryUpload';
 import { SaveProgress } from '@/components/quotation/SaveProgress';
 import { SaveResult } from '@/components/quotation/SaveResult';
 import { SheetsSyncWarning } from '@/components/quotation/SheetsSyncWarning';
-import { AppError, messageOf } from '@/services/api/errors';
+import { AppError, businessMessageOf, messageOf } from '@/services/api/errors';
 import { discardDraft, getQuotationByDraftId } from '@/services/quotation/quotation-service';
 import { fetchSignature } from '@/services/signatories/signatory-service';
 import {
@@ -118,6 +118,7 @@ export default function QuotationPreviewPage() {
   const pdf = useGeneratePdf();
   const docx = useGenerateDocx();
   const drive = useSaveToDrive();
+  const queryClient = useQueryClient();
 
   const token = state.status === 'authenticated' ? state.token : null;
 
@@ -211,6 +212,20 @@ export default function QuotationPreviewPage() {
       signatory: person === null ? null : { name: person.name },
       signatureLoaded: signature.data !== undefined,
       sealLoaded: assets.data.seal.length > 0,
+      /*
+       * DELIBERATELY NOT read from Company Settings.
+       *
+       * This context is used for ONE thing — `hasUnresolvedTokens`, which asks
+       * whether a stored term still contains a placeholder that was never
+       * filled in. It does not render anything: the terms on screen are
+       * `stored.terms`, the resolved snapshot saved with the quotation.
+       *
+       * Feeding today's settings in would make an OLD quotation's export
+       * blockers depend on a value an administrator changed last week, which is
+       * precisely the coupling the snapshot design exists to prevent. Every
+       * field below therefore comes from the quotation itself, or from
+       * deployment configuration that is not per-quotation at all.
+       */
       tokenContext: {
         ...emptyTokenContext(),
         companyName: DEFAULT_COMPANY_NAME,
@@ -219,6 +234,17 @@ export default function QuotationPreviewPage() {
         clientName: stored.client['clientName'] ?? '',
         quotationNumber: stored.quotationNumber ?? '',
         quotationDate: formatDisplayDate(stored.quotationDate),
+        /*
+         * `validityDays` stays EMPTY here even though the quotation now stores
+         * one, and that is deliberate.
+         *
+         * This asks whether the SAVED TEXT still contains a placeholder. The
+         * generators print `term.body` verbatim, so a body that still reads
+         * "{{quotation.validityDays}}" prints those braces to the client no
+         * matter what the record knows. Supplying the stored number here would
+         * resolve the token in this check only, clearing the blocker for a
+         * document that would still go out with a placeholder in it.
+         */
         vatRate: `${String((stored.vatRateBasisPoints ?? 0) / 100)}%`,
       },
     });
@@ -229,18 +255,47 @@ export default function QuotationPreviewPage() {
   const isLoading = quotation.isPending || assets.isPending;
   const isDraft = (stored?.quotationNumber ?? '').length === 0;
 
-  const handleDiscardDraft = async (): Promise<void> => {
+  /**
+   * Discard the open draft.
+   *
+   * A mutation rather than a bare async function, for two reasons the previous
+   * version got wrong:
+   *
+   *   - `isPending` drives a real busy state, so the button disables itself and
+   *     a second click cannot send a second discard. It was hardcoded `false`;
+   *   - on success the register query is invalidated. Without that, the global
+   *     30-second `staleTime` meant the discarded draft was still listed when
+   *     the user arrived back at /quotations, and they would discard it again.
+   */
+  const discardMutation = useMutation({
+    mutationFn: (id: string) => discardDraft(id, token ?? ''),
+    onSuccess: () => {
+      /*
+       * Both keys. `['quotations']` is the register list; `['quotation', id]`
+       * is this page's own copy, which must not survive as a cached view of a
+       * record that no longer exists.
+       */
+      void queryClient.invalidateQueries({ queryKey: ['quotations'] });
+      void queryClient.removeQueries({ queryKey: ['quotation', draftId] });
+
+      show({ variant: 'success', message: 'Draft discarded.' });
+      void navigate('/quotations');
+    },
+    onError: (error: unknown) => {
+      // The creator-only and already-numbered refusals explain themselves, so
+      // they are shown in full rather than collapsed to a generic sentence.
+      show({ variant: 'error', message: businessMessageOf(error) });
+    },
+  });
+
+  const handleDiscardDraft = (): void => {
     if (token === null || draftId === undefined) return;
+    if (discardMutation.isPending) return;
+
     const confirmed = window.confirm('Discard this draft? This action cannot be undone.');
     if (!confirmed) return;
 
-    try {
-      await discardDraft(draftId, token);
-      show({ variant: 'success', message: 'Draft discarded.' });
-      void navigate('/quotations');
-    } catch (error: unknown) {
-      show({ variant: 'error', message: messageOf(error) });
-    }
+    discardMutation.mutate(draftId);
   };
 
   return (
@@ -309,10 +364,8 @@ export default function QuotationPreviewPage() {
                 });
               }}
               showDiscardDraft={isDraft}
-              onDiscardDraft={() => {
-                void handleDiscardDraft();
-              }}
-              isDiscardingDraft={false}
+              onDiscardDraft={handleDiscardDraft}
+              isDiscardingDraft={discardMutation.isPending}
             />
           </div>
 

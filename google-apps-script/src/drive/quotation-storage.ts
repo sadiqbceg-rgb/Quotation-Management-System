@@ -141,6 +141,24 @@ export function storeQuotationDocuments(
         const stored = uploaded.length > 0 || files.pdf !== null || files.docx !== null;
         if (!stored) throw thrown;
 
+        /*
+         * A partial upload is the ONE path where a Drive failure never reaches
+         * the router, because it is converted into an outcome rather than
+         * rethrown. Logged here or the reason is gone: the client is told only
+         * "the Word document did not upload", and without this an operator had
+         * no way to find out why — which is exactly what happened.
+         *
+         * `detail` on an ApiError is the original Drive text; anything else is
+         * stringified. Neither reaches the client (§19.9).
+         */
+        const reason =
+          thrown instanceof ApiError
+            ? `${thrown.code}: ${thrown.detail ?? thrown.message}`
+            : thrown instanceof Error
+              ? thrown.message
+              : String(thrown);
+        console.error(`[drive] ${input.quotationNumber} ${kind} upload failed — ${reason}`);
+
         missing.push(kind);
         continue;
       }

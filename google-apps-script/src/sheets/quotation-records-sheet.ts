@@ -209,9 +209,22 @@ export function deleteByDraftId(draftId: string): boolean {
 
   const rows = readRows(target);
   const next = rows.filter((_row, index) => index + 2 !== found.rowNumber);
+
   target.clear();
+
+  /*
+   * The header row is rewritten UNCONDITIONALLY.
+   *
+   * This used to sit inside `if (next.length > 0)`, so deleting the last
+   * remaining record cleared the sheet and put nothing back — every later read
+   * then ran against a headerless sheet. The data rows are conditional because
+   * there may be none; the headers never are.
+   */
+  target.getRange(1, 1, 1, QUOTATION_RECORDS_HEADERS.length).setValues([
+    QUOTATION_RECORDS_HEADERS.slice(),
+  ]);
+
   if (next.length > 0) {
-    target.getRange(1, 1, 1, QUOTATION_RECORDS_HEADERS.length).setValues([QUOTATION_RECORDS_HEADERS.slice()]);
     target.getRange(2, 1, next.length, QUOTATION_RECORDS_HEADERS.length).setValues(next);
   }
   return true;

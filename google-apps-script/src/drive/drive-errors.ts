@@ -65,13 +65,18 @@ export function classifyDriveError(thrown: unknown): DriveErrorCode | null {
  *
  * Rethrows a configuration failure untouched: `CONFIG_MISSING` is handled by
  * the router and naming a missing Script Property is the whole point of it.
+ *
  * The original message is never forwarded to the client — it can name folder
- * ids and account addresses (§19.9) — but it is left as the `cause` so it
- * reaches Cloud Logging.
+ * ids and account addresses (§19.9) — but it IS carried on `detail`, which is
+ * log-only and never serialised. The comment here used to claim the original
+ * survived as a `cause`; it did not, because `ApiError` had no such parameter,
+ * and the reason for every Drive failure was silently discarded.
  */
 export function driveError(thrown: unknown, fallback: DriveErrorCode): ApiError {
   if (isConfigMissing(thrown)) throw thrown;
 
   const code = classifyDriveError(thrown) ?? fallback;
-  return new ApiError(code, USER_MESSAGES[code]);
+  const original = thrown instanceof Error ? thrown.message : String(thrown);
+
+  return new ApiError(code, USER_MESSAGES[code], undefined, original);
 }

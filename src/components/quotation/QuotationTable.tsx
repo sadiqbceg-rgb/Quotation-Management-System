@@ -91,6 +91,26 @@ export function QuotationTable({ rows, isChangingStatus, onStatusChange }: Quota
       ),
     },
     {
+      key: 'edit',
+      header: 'Edit',
+      render: (row) =>
+        row.draftId.length === 0 ? (
+          <span className="text-slate-400">—</span>
+        ) : (
+          <Link
+            to={`/quotations/${row.draftId}/edit`}
+            className="text-brand-navy underline underline-offset-2"
+            aria-label={
+              row.quotationNumber.length > 0
+                ? `Edit quotation ${row.quotationNumber}`
+                : 'Edit draft quotation'
+            }
+          >
+            Edit
+          </Link>
+        ),
+    },
+    {
       key: 'drive',
       header: 'Drive Folder',
       render: (row) => {

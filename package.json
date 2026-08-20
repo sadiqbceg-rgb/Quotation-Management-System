@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Speed Falcon Company quotation generation system — React + TypeScript frontend over a Google Apps Script backend.",
   "scripts": {
+    "predev": "node scripts/prepare-assets.ts",
     "dev": "vite",
     "prebuild": "node scripts/prepare-assets.ts",
     "build": "tsc --noEmit && vite build",

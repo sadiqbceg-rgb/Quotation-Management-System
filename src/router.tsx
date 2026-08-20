@@ -10,6 +10,7 @@ import DashboardPage from '@/pages/dashboard';
 import QuotationsPage from '@/pages/quotations';
 import NewQuotationPage from '@/pages/quotations/new';
 import QuotationPreviewPage from '@/pages/quotations/preview';
+import EditQuotationPage from '@/pages/quotations/edit';
 import CustomersPage from '@/pages/customers';
 import ItemsPage from '@/pages/items';
 import TermsPage from '@/pages/terms';
@@ -54,6 +55,9 @@ export const router = createBrowserRouter([
       { path: 'quotations', element: <QuotationsPage /> },
       { path: 'quotations/new', element: <NewQuotationPage /> },
       { path: 'quotations/:draftId/preview', element: <QuotationPreviewPage /> },
+      // Editing reuses `quotation.save`: the backend finds the record by draft
+      // id, keeps any number already issued and reserves no new one.
+      { path: 'quotations/:draftId/edit', element: <EditQuotationPage /> },
       { path: 'customers', element: <CustomersPage /> },
       { path: 'items', element: <ItemsPage /> },
       { path: 'terms', element: <TermsPage /> },

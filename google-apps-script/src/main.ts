@@ -498,6 +498,19 @@ export function handlePost(raw: string | undefined): GoogleAppsScript.Content.Te
     return jsonOutput(body);
   } catch (thrown: unknown) {
     if (thrown instanceof ApiError) {
+      /*
+       * A typed error is an EXPECTED outcome, so it is not logged as an
+       * incident — except when it carries a `detail`, which only the Drive
+       * layer sets and which holds the reason Google gave. Without this the
+       * client got "saving to Google Drive failed" and the server kept no
+       * record of why.
+       *
+       * `detail` is never serialised: `failure()` builds the body from code,
+       * message and fields only.
+       */
+      if (thrown.detail !== undefined) {
+        console.error(`[${requestId}] ${thrown.code}: ${thrown.detail}`);
+      }
       return failure(requestId, thrown);
     }
 

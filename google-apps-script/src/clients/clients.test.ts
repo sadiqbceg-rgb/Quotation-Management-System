@@ -235,7 +235,9 @@ describe('deactivation', () => {
     expect(call('clients.deactivate', { id: created.id, active: false }, adminToken).ok).toBe(true);
 
     expect(listCustomers()).toHaveLength(0);
-    expect(listCustomers(true)).toHaveLength(1);
+    // Asked for as an Admin: `includeInactive` is an Admin-only view, and the
+    // point of this assertion is that the ROW survives, not who can see it.
+    expect(listCustomers(true, adminToken)).toHaveLength(1);
   });
 
   it('never deletes the row', () => {
@@ -253,6 +255,76 @@ describe('deactivation', () => {
     call('clients.deactivate', { id: created.id, active: true }, adminToken);
 
     expect(listCustomers()).toHaveLength(1);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Who may see a deactivated customer (R-1)                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `includeInactive` used to be honoured for any authenticated caller.
+ *
+ * Deactivation is Admin-only, and the New Quotation picker offers active
+ * customers only — so a User able to fetch the inactive rows could reach
+ * exactly the records the company had decided not to quote again. The flag is
+ * now downgraded to an active-only listing for a User rather than refused,
+ * because the frontend derives it from the caller's own role and a User never
+ * asks for it knowingly.
+ */
+describe('the includeInactive flag', () => {
+  function seedOneOfEach(): void {
+    const active = createCustomer({ clientName: 'TEST_ONLY Active Contact' });
+    expect(active.active).toBe(true);
+
+    const inactive = createCustomer({
+      clientName: 'TEST_ONLY Inactive Contact',
+      companyName: 'TEST_ONLY Inactive Co.',
+    });
+    expect(call('clients.deactivate', { id: inactive.id, active: false }, adminToken).ok).toBe(true);
+  }
+
+  it('gives an Admin the inactive rows as well', () => {
+    seedOneOfEach();
+
+    expect(listCustomers(true, adminToken)).toHaveLength(2);
+  });
+
+  it('gives a User the ACTIVE rows only, even when they ask for everything', () => {
+    seedOneOfEach();
+
+    const visible = listCustomers(true, userToken);
+    expect(visible).toHaveLength(1);
+    expect(visible[0]?.clientName).toBe('TEST_ONLY Active Contact');
+  });
+
+  it('never leaks an inactive customer to a User', () => {
+    seedOneOfEach();
+
+    expect(listCustomers(true, userToken).every((customer) => customer.active)).toBe(true);
+  });
+
+  it('downgrades rather than refusing, so the page still works', () => {
+    seedOneOfEach();
+
+    // A User asking for everything must get a usable library, not an error.
+    expect(call('clients.list', { includeInactive: true }, userToken).ok).toBe(true);
+  });
+
+  it('leaves the default active-only listing untouched for both roles', () => {
+    seedOneOfEach();
+
+    // R-1 narrows ONE flag. Nothing about the ordinary read changes.
+    expect(listCustomers(false, userToken)).toHaveLength(1);
+    expect(listCustomers(false, adminToken)).toHaveLength(1);
+  });
+
+  it('is not fooled by a truthy non-boolean', () => {
+    seedOneOfEach();
+
+    // The handler compares against `true`, so 'true' and 1 are not the flag.
+    const response = call('clients.list', { includeInactive: 'true' }, adminToken);
+    expect((response.data as PublicClient[]).every((customer) => customer.active)).toBe(true);
   });
 });
 

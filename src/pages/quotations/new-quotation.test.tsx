@@ -149,6 +149,24 @@ describe('quotation number field', () => {
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * The other half of R-3.
+ *
+ * The edit page was taught to say "Edit Quotation" and "Save changes"; this
+ * asserts that teaching did not leak into the page that really is creating one.
+ */
+describe('the wording when creating', () => {
+  it('is headed "New Quotation" and offers "Create quotation"', async () => {
+    renderWithProviders(<NewQuotationPage />, { user: TEST_ONLY_USER });
+    await screen.findByLabelText(/quotation for/i);
+
+    expect(screen.getByRole('heading', { name: /new quotation/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /create quotation/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save draft/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /save changes/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('saving', () => {
   it('finalizes with finalize=true', async () => {
     const user = userEvent.setup();
@@ -229,7 +247,9 @@ describe('saving', () => {
     // The first save had no number yet.
     expect(save.mock.calls[0]?.[0].quotationNumber).toBeUndefined();
 
-    await user.click(screen.getByRole('button', { name: /save draft/i }));
+    // "Save", not "Save draft": a number has been issued, so this is no longer
+    // a draft and the button no longer claims it is (R-3).
+    await user.click(screen.getByRole('button', { name: /^save$/i }));
     await waitFor(() => {
       expect(save).toHaveBeenCalledTimes(2);
     });

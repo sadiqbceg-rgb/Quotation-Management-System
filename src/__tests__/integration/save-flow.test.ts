@@ -310,8 +310,10 @@ describe('the whole save', () => {
 
     expect(stored.outcome).toBe('success');
     expect(stored.missing).toEqual([]);
-    expect(stored.files.pdf?.url ?? '').toMatch(/^https:\/\/drive\.google\.com\//);
-    expect(stored.files.docx?.url ?? '').toMatch(/^https:\/\/drive\.google\.com\//);
+    // Per file type, as real Drive answers: the viewer for a PDF, the Docs
+    // editor for a Word file.
+    expect(stored.files.pdf?.url ?? '').toMatch(/^https:\/\/drive\.google\.com\/file\/d\//);
+    expect(stored.files.docx?.url ?? '').toMatch(/^https:\/\/docs\.google\.com\/document\/d\//);
   });
 
   it('creates the Year / Month / Number folders PRD §5 asks for', async () => {

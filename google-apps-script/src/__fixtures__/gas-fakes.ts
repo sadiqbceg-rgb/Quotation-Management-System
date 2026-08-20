@@ -520,11 +520,42 @@ export function createDriveFake(rootIdOrUndefined?: string): DriveFake {
     return segments.join('/');
   }
 
+  /**
+   * The URL real Drive hands back for a stored file.
+   *
+   * The Office MIME types open in the Google editors, so Drive answers with a
+   * `docs.google.com` editor link for them and a `drive.google.com` viewer link
+   * for everything else. Reproducing that here is what lets a test see what
+   * production sees.
+   */
+  function docsEditorUrl(mimeType: string, id: string): string {
+    const EDITORS: Record<string, string> = {
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'document',
+      'application/vnd.google-apps.document': 'document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'spreadsheets',
+      'application/vnd.google-apps.spreadsheet': 'spreadsheets',
+    };
+
+    const editor = EDITORS[mimeType];
+    return editor === undefined
+      ? `https://drive.google.com/file/d/${id}/view`
+      : `https://docs.google.com/${editor}/d/${id}/edit`;
+  }
+
   function buildFile(file: DriveFileFake): unknown {
     return {
       getId: (): string => file.id,
       getName: (): string => file.name,
-      getUrl: (): string => `https://drive.google.com/file/d/${file.id}/view`,
+      /*
+       * Drive returns the host that can OPEN the file, and that depends on its
+       * type. An Office document gets a Google Docs editor link; everything
+       * else gets the Drive viewer.
+       *
+       * The fake returned a `drive.google.com` URL for every type, which is why
+       * it could not catch a bug that rejected every uploaded Word file — the
+       * one shape real Drive produces was the one the fake never did.
+       */
+      getUrl: (): string => docsEditorUrl(file.mimeType, file.id),
       /** Drive's own copy, used by the daily spreadsheet backup. */
       makeCopy: (name: string, target: { getId: () => string }): unknown => {
         const copy: DriveFileFake = {

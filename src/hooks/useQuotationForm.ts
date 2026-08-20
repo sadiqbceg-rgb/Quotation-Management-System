@@ -49,6 +49,16 @@ export interface UseQuotationFormOptions {
   existingDraftId?: string;
   existingQuotationNumber?: string;
   defaultValues?: QuotationFormValues;
+  /**
+   * The validity period this quotation is being saved with.
+   *
+   * Snapshotted onto the payload, exactly like the VAT rate: for a NEW
+   * quotation the caller passes today's Company Settings default, and for an
+   * existing one it passes the value that quotation was already stored with.
+   * This hook never looks it up — it has no idea Company Settings exist, and
+   * that is what keeps a settings change from reaching a saved quotation.
+   */
+  validityDays?: number;
 }
 
 /**
@@ -64,6 +74,7 @@ export interface UseQuotationFormOptions {
  */
 export function useQuotationForm(options: UseQuotationFormOptions = {}) {
   const draftIdRef = useRef<string>(options.existingDraftId ?? newDraftId());
+  const { validityDays } = options;
 
   const [quotationNumber, setQuotationNumber] = useState<string | null>(
     options.existingQuotationNumber ?? null,
@@ -152,13 +163,23 @@ export function useQuotationForm(options: UseQuotationFormOptions = {}) {
         payload.discountRateBasisPoints = Math.round(values.discountRatePercent * 100);
       }
 
+      /*
+       * Omitted rather than guessed when the caller has none.
+       *
+       * Sending a made-up number here would write it onto the record; leaving
+       * the key out lets the server keep whatever that quotation already had.
+       */
+      if (validityDays !== undefined) {
+        payload.validityDays = validityDays;
+      }
+
       if (quotationNumber !== null && quotationNumber.length > 0) {
         payload.quotationNumber = quotationNumber;
       }
 
       return payload;
     },
-    [quotationNumber],
+    [quotationNumber, validityDays],
   );
 
   return {

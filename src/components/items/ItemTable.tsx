@@ -14,6 +14,7 @@ import {
 } from '@/utils/parse-decimal';
 import { Button } from '@/components/common/Button';
 import { DecimalInput } from './DecimalInput';
+import { LibraryItemPicker } from './LibraryItemPicker';
 import { UnitSelect } from './UnitSelect';
 import { CategorySummaryLine } from './CategorySummaryLine';
 
@@ -111,16 +112,35 @@ export function ItemTable({
                 <td className="px-3 py-2 text-slate-500 tabular-nums">{index + 1}</td>
 
                 <td className="px-3 py-2">
-                  <input
-                    type="text"
-                    aria-label={`${columns.description} ${String(index + 1)}`}
-                    value={item.description}
-                    maxLength={TEXT_LIMITS.itemDescription.max}
-                    onChange={(event) => {
-                      onUpdate(item.id, { description: event.target.value });
-                    }}
-                    className="focus:border-brand-navy focus:ring-brand-navy/20 h-9 w-full rounded-md border border-slate-300 px-2 text-sm focus:ring-2 focus:outline-none"
-                  />
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      aria-label={`${columns.description} ${String(index + 1)}`}
+                      value={item.description}
+                      maxLength={TEXT_LIMITS.itemDescription.max}
+                      onChange={(event) => {
+                        onUpdate(item.id, { description: event.target.value });
+                      }}
+                      className="focus:border-brand-navy focus:ring-brand-navy/20 h-9 w-full rounded-md border border-slate-300 px-2 text-sm focus:ring-2 focus:outline-none"
+                    />
+                    {/*
+                     * PREFILL, not a link. The picker writes the description and
+                     * the unit into this row and keeps no reference — the
+                     * quotation stores values, so editing or deactivating the
+                     * library item later cannot change it. Typing the row by
+                     * hand works exactly as it did.
+                     */}
+                    <LibraryItemPicker
+                      category={group.category}
+                      rowLabel={`${columns.description} ${String(index + 1)}`}
+                      onSelect={(choice) => {
+                        onUpdate(item.id, {
+                          description: choice.description,
+                          unit: choice.unit,
+                        });
+                      }}
+                    />
+                  </div>
                 </td>
 
                 <td className="px-3 py-2">

@@ -31,18 +31,43 @@ import {
 import { DEFAULT_VAT_RATE_BASIS_POINTS } from '@shared/totals';
 import type { TermTokenContext } from '@shared/term-tokens';
 import type { QuotationFormValues } from '@/schemas/quotation-schema';
+import type { EditorLineItem } from '@/hooks/useLineItems';
+import type { EditorTerm } from '@/hooks/useQuotationTerms';
 
 /**
  * What a quotation starts from when Company Settings cannot be read.
  *
  * Exactly the constants this system shipped with, so a backend that is down
  * degrades to the previous behaviour rather than to a blank or a guess.
+ *
+ * Exported for the edit page, which needs the same fallback for the same
+ * reason — see the note on `settings` in `NewQuotationFormProps`.
  */
-const FALLBACK_SETTINGS: BusinessSettings = {
+export const FALLBACK_SETTINGS: BusinessSettings = {
   defaultVatRateBasisPoints: DEFAULT_VAT_RATE_BASIS_POINTS,
   quotationValidityDays: DEFAULT_QUOTATION_VALIDITY_DAYS,
   defaultClosingParagraph: DEFAULT_CLOSING_PARAGRAPH,
 };
+
+/**
+ * What an EXISTING quotation uses when it has no stored validity of its own.
+ *
+ * Only quotations written before `validityDays` was snapshotted are in this
+ * position. The shipped constant is the honest answer for them: it is the value
+ * this system used for every quotation up to that point (UR-11 — 7 days in both
+ * reference documents), so it reproduces the behaviour those quotations were
+ * actually created under.
+ *
+ * Deliberately NOT the current Company Settings value. Reaching for today's
+ * setting here is the exact coupling this whole change removes, and it would be
+ * worse for a legacy quotation than for any other: nothing on the record could
+ * contradict it, so the substitution would be invisible.
+ *
+ * Their DOCUMENTS are unaffected either way. The preview, the PDF and the DOCX
+ * all print the stored resolved term text, never a re-resolved template, so a
+ * legacy quotation only meets this constant if somebody reopens it and saves.
+ */
+export const LEGACY_VALIDITY_DAYS = DEFAULT_QUOTATION_VALIDITY_DAYS;
 
 /**
  * New Quotation.
@@ -112,6 +137,25 @@ export default function NewQuotationPage() {
   );
 }
 
+/** A saved quotation reopened for editing. */
+export interface ExistingQuotation {
+  draftId: string;
+  /** Empty for a draft; the issued number once finalized. Never changed here. */
+  quotationNumber: string;
+  values: QuotationFormValues;
+  lines: EditorLineItem[];
+  terms: EditorTerm[];
+  /** The signatory the quotation was saved with, if any. */
+  personId: string | null;
+  /**
+   * The validity period stored ON this quotation.
+   *
+   * `null` for a quotation saved before validity was snapshotted — see
+   * `LEGACY_VALIDITY_DAYS` for what happens then.
+   */
+  validityDays: number | null;
+}
+
 export interface NewQuotationFormProps {
   /**
    * Resolved before this component mounts — see the note above.
@@ -119,16 +163,32 @@ export interface NewQuotationFormProps {
    * Defaulted so the form can be rendered directly, without a settings round
    * trip, by the component tests that mount it as a harness for the items,
    * terms and signatory sections. Those tests are about those sections; making
-   * them wait on company defaults would couple them to an unrelated concern.
+   * them wait on company defaults they are not testing would couple them to an
+   * unrelated concern.
    */
   settings?: BusinessSettings;
   /** True when the company defaults could not be read and the constants are in use. */
   usingFallback?: boolean;
+  /**
+   * Present when EDITING a saved quotation rather than creating one.
+   *
+   * The draft id is what makes this an edit: `quotation.save` finds the record
+   * by it, keeps the number already issued, and reserves nothing.
+   *
+   * `existing.values` wins over `settings` for every form field, and
+   * `existing.validityDays` wins over `settings.quotationValidityDays`. So an
+   * existing quotation keeps the VAT rate, the closing paragraph AND the
+   * validity period it was saved with, and the only thing `settings` still
+   * reaches on this path is the "Restore the company default" button beside
+   * the closing paragraph, which exists to fetch today's default on request.
+   */
+  existing?: ExistingQuotation;
 }
 
 export function NewQuotationForm({
   settings = FALLBACK_SETTINGS,
   usingFallback = false,
+  existing,
 }: NewQuotationFormProps) {
   const { state } = useAuth();
   const { show } = useToast();
@@ -143,16 +203,48 @@ export function NewQuotationForm({
    * every quotation from the rate held ON that quotation.
    */
   const defaultValues = useMemo<QuotationFormValues>(
-    () => ({
-      ...emptyQuotationForm(),
-      vatRatePercent: settings.defaultVatRateBasisPoints / 100,
-      closingParagraph: settings.defaultClosingParagraph,
-    }),
-    [settings],
+    () =>
+      // An existing quotation keeps what it was saved with. Applying today's
+      // defaults over it is exactly the retroactive change the snapshot design
+      // exists to prevent.
+      existing?.values ?? {
+        ...emptyQuotationForm(),
+        vatRatePercent: settings.defaultVatRateBasisPoints / 100,
+        closingParagraph: settings.defaultClosingParagraph,
+      },
+    [settings, existing],
   );
+
+  /*
+   * The validity period THIS quotation is issued with.
+   *
+   * One value, feeding two things that must never disagree: the number written
+   * onto the payload, and the number `{{quotation.validityDays}}` resolves to
+   * in the terms. Deriving both from here is what makes the printed clause and
+   * the stored field impossible to get out of step.
+   *
+   * A new quotation takes today's company default. An existing one keeps what
+   * it was saved with — Company Settings are not consulted for it at all, which
+   * is the whole point.
+   */
+  const validityDays =
+    existing === undefined
+      ? settings.quotationValidityDays
+      : (existing.validityDays ?? LEGACY_VALIDITY_DAYS);
 
   const { form, quotationNumber, setQuotationNumber, toPayload } = useQuotationForm({
     defaultValues,
+    validityDays,
+    // These make `quotation.save` an UPDATE: the backend finds the record by
+    // draft id, keeps the issued number and reserves no new one.
+    ...(existing === undefined
+      ? {}
+      : {
+          existingDraftId: existing.draftId,
+          ...(existing.quotationNumber.length === 0
+            ? {}
+            : { existingQuotationNumber: existing.quotationNumber }),
+        }),
   });
   const {
     register,
@@ -164,6 +256,22 @@ export function NewQuotationForm({
   const lineItems = useLineItems();
   const terms = useQuotationTerms();
   const signatories = useAuthorizedPersons();
+
+  /*
+   * Seed the sections a saved quotation already has, exactly once.
+   *
+   * Derived during render rather than in an effect, and guarded by the draft
+   * id: re-seeding on a later render would throw away whatever the user had
+   * just typed. `useQuotationForm` seeds the plain fields through
+   * `defaultValues`; these three hold their own state and need telling.
+   */
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+  if (existing !== undefined && seededFor !== existing.draftId) {
+    setSeededFor(existing.draftId);
+    lineItems.reset(existing.lines);
+    terms.reset(existing.terms);
+    if (existing.personId !== null) signatories.select(existing.personId);
+  }
 
   const vatEnabled = watch('vatEnabled');
   const vatRatePercent = watch('vatRatePercent');
@@ -198,12 +306,14 @@ export function NewQuotationForm({
       quotationNumber: quotationNumber ?? '',
       quotationDate: formatDisplayDate(quotationDate),
       /*
-       * From Company Settings. This was hardcoded empty, which left the
-       * imported term "valid for {{quotation.validityDays}} days" permanently
-       * unresolved. The resolved text is what gets SNAPSHOTTED onto the
-       * quotation, so the validity a quotation was issued with stays with it.
+       * The quotation's OWN validity, not a live reading of Company Settings.
+       *
+       * For a new quotation that is today's company default; for one being
+       * edited it is the value stored on the record. Both arrive through the
+       * single `validityDays` above, so the number printed in the term and the
+       * number saved on the payload are the same number by construction.
        */
-      validityDays: String(settings.quotationValidityDays),
+      validityDays: String(validityDays),
       vatRate: vatEnabled ? `${String(vatRatePercent)}%` : '',
     }),
     [
@@ -211,13 +321,31 @@ export function NewQuotationForm({
       clientName,
       quotationNumber,
       quotationDate,
-      settings.quotationValidityDays,
+      validityDays,
       vatEnabled,
       vatRatePercent,
     ],
   );
 
   const [busy, setBusy] = useState<'draft' | 'finalize' | null>(null);
+
+  /*
+   * What this screen is actually doing, in its own words (R-3).
+   *
+   * The page said "New Quotation" and offered "Create quotation" even when it
+   * had been opened on a quotation issued weeks ago, and told the user that "a
+   * quotation number is issued only when you finalize" — which for an issued
+   * quotation is simply untrue, and reads as a warning that pressing the button
+   * will burn a second number. It will not: the server finds the record by
+   * draft id and keeps the number already on it (§7.7).
+   *
+   * The number, not the mode, decides the button labels. Editing a saved DRAFT
+   * is still editing — the title says so — but its primary action genuinely
+   * does create the quotation and issue the number, so calling it "Save
+   * changes" would understate it in the one direction that matters.
+   */
+  const isEditing = existing !== undefined;
+  const hasIssuedNumber = quotationNumber !== null && quotationNumber.length > 0;
 
   const token = state.status === 'authenticated' ? state.token : null;
   const isAdmin = state.status === 'authenticated' && state.user.role === 'Admin';
@@ -266,9 +394,16 @@ export function NewQuotationForm({
 
       show({
         variant: 'success',
+        // `hasIssuedNumber` is read from BEFORE this save, so a quotation that
+        // has just been given its number still reports as created, and one
+        // that already had it reports as updated.
         message: finalize
-          ? `Quotation ${result.quotationNumber} created.`
-          : 'Draft saved. No quotation number has been issued yet.',
+          ? hasIssuedNumber
+            ? `Quotation ${result.quotationNumber} updated.`
+            : `Quotation ${result.quotationNumber} created.`
+          : hasIssuedNumber
+            ? 'Changes saved.'
+            : 'Draft saved. No quotation number has been issued yet.',
       });
 
       if (finalize) {
@@ -309,12 +444,18 @@ export function NewQuotationForm({
   return (
     <>
       <PageHeader
-        title="New Quotation"
-        description="Enter the details. A quotation number is issued only when you finalize."
+        title={isEditing ? 'Edit Quotation' : 'New Quotation'}
+        description={
+          !isEditing
+            ? 'Enter the details. A quotation number is issued only when you finalize.'
+            : hasIssuedNumber
+              ? 'Changes are saved to this quotation. Its quotation number does not change.'
+              : 'This draft has no quotation number yet. One is issued only when you create the quotation.'
+        }
         actions={
           <>
             <Button variant="secondary" onClick={saveDraft} isLoading={busy === 'draft'}>
-              Save draft
+              {hasIssuedNumber ? 'Save' : 'Save draft'}
             </Button>
             {savedDraftId === null ? null : (
               <Button
@@ -332,7 +473,7 @@ export function NewQuotationForm({
                 void handleSubmit((values) => submit(values, true))();
               }}
             >
-              Create quotation
+              {hasIssuedNumber ? 'Save changes' : 'Create quotation'}
             </Button>
           </>
         }

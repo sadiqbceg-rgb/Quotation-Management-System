@@ -202,8 +202,11 @@ describe('a successful Drive save (PRD §30 step 13)', () => {
     expect(String(row[COLUMN.driveFolder])).toMatch(
       /^=HYPERLINK\("https:\/\/drive\.google\.com\//,
     );
-    expect(String(row[COLUMN.pdfUrl])).toMatch(/^https:\/\/drive\.google\.com\//);
-    expect(String(row[COLUMN.docxUrl])).toMatch(/^https:\/\/drive\.google\.com\//);
+    // Drive answers with the host that can OPEN each file: the viewer for a
+    // PDF, the Docs editor for a .docx. Asserting `drive.google.com` for both
+    // is what let a bug ship that rejected every uploaded Word file.
+    expect(String(row[COLUMN.pdfUrl])).toMatch(/^https:\/\/drive\.google\.com\/file\/d\//);
+    expect(String(row[COLUMN.docxUrl])).toMatch(/^https:\/\/docs\.google\.com\/document\/d\//);
   });
 
   it('audits the write with the actor and the number', () => {

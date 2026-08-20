@@ -27,7 +27,12 @@
 
 import { DEFAULT_CLOSING_PARAGRAPH, DEFAULT_QUOTATION_VALIDITY_DAYS } from '@shared/company-defaults';
 import { DEFAULT_VAT_RATE_BASIS_POINTS } from '@shared/totals';
-import { TEXT_LIMITS, isWithinLength, stripControlCharacters } from '@shared/validation-rules';
+import {
+  QUOTATION_LIMITS,
+  TEXT_LIMITS,
+  isWithinLength,
+  stripControlCharacters,
+} from '@shared/validation-rules';
 import { writeAudit } from '../audit/audit-log';
 import { companyVatNumber, quotationCodes } from '../config/properties';
 import { ApiError, type Caller, type HandlerContext } from '../errors';
@@ -70,8 +75,17 @@ export interface SettingsResponse {
 
 /** Bounds. A rate outside 0–100% is a typo, not a business decision. */
 export const VAT_RATE_MAX_BASIS_POINTS = 10_000;
-export const VALIDITY_DAYS_MIN = 1;
-export const VALIDITY_DAYS_MAX = 365;
+
+/*
+ * The validity bounds are the SHARED ones, not a second copy.
+ *
+ * The number an administrator types here is snapshotted onto every quotation
+ * created afterwards, and the quotation validator bounds it too. If the two
+ * lists of bounds ever drifted, Settings would accept a value that then made
+ * every new quotation unsaveable.
+ */
+export const VALIDITY_DAYS_MIN = QUOTATION_LIMITS.validityDaysMin;
+export const VALIDITY_DAYS_MAX = QUOTATION_LIMITS.validityDaysMax;
 
 function toInteger(raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw.length === 0) return fallback;

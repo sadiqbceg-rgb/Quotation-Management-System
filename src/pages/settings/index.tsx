@@ -24,6 +24,96 @@ function errorProp(value: string | null | undefined): { error?: string } {
   return value === null || value === undefined || value.length === 0 ? {} : { error: value };
 }
 
+/* -------------------------------------------------------------------------- */
+/* The editable draft                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What the form holds while it is being edited — TEXT, not numbers.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE NUMERIC FIELDS ARE STRINGS
+ * ---------------------------------------------------------------------------
+ * They used to be numbers, parsed on every keystroke, with a non-numeric result
+ * folded to 0. Backspacing a field to retype it therefore did not empty it — it
+ * put a `0` there, and 0 is a value the form was perfectly willing to save. For
+ * the VAT rate that is worse than a nuisance: 0 is a legal rate, so the server
+ * accepts it, and every quotation written afterwards starts at 0% VAT because
+ * somebody cleared a box and pressed Save.
+ *
+ * Holding the raw text means an empty field stays empty, is visibly empty, and
+ * is refused at submit as "required" rather than silently saved as zero. A
+ * deliberately typed 0 still goes through — the two are now distinguishable,
+ * which they were not before.
+ */
+interface SettingsDraft {
+  /** Percent, as typed. `''` is a real state and never means zero. */
+  vatPercent: string;
+  /** Days, as typed. */
+  validityDays: string;
+  closingParagraph: string;
+}
+
+function toDraft(business: BusinessSettings): SettingsDraft {
+  return {
+    vatPercent: String(business.defaultVatRateBasisPoints / 100),
+    validityDays: String(business.quotationValidityDays),
+    closingParagraph: business.defaultClosingParagraph,
+  };
+}
+
+interface ParsedDraft {
+  values: BusinessSettings | null;
+  errors: Record<string, string>;
+}
+
+/**
+ * Turn the typed text into settings, or say which box needs attention.
+ *
+ * Deliberately narrow: it catches only what the server CANNOT — a field the
+ * user has not filled in, which never reaches the wire and so could never be
+ * reported back. The bounds themselves stay the server's to enforce (§19.3);
+ * duplicating them here would be a second set of rules to keep in step, and the
+ * endpoint is public, so a browser-side check secures nothing.
+ *
+ * The keys match the server's field names, so a client-side message and a
+ * server-side one land on the same input.
+ */
+function parseDraft(draft: SettingsDraft): ParsedDraft {
+  const errors: Record<string, string> = {};
+
+  const vatText = draft.vatPercent.trim();
+  const daysText = draft.validityDays.trim();
+
+  const percent = Number.parseFloat(vatText);
+  const days = Number.parseInt(daysText, 10);
+
+  if (vatText.length === 0) {
+    errors['defaultVatRateBasisPoints'] = 'Enter a VAT rate. Leaving this empty is not the same as 0%.';
+  } else if (!Number.isFinite(percent)) {
+    errors['defaultVatRateBasisPoints'] = 'Enter a VAT rate as a number.';
+  }
+
+  if (daysText.length === 0) {
+    errors['quotationValidityDays'] = 'Enter the number of days a quotation stays valid.';
+  } else if (!Number.isFinite(days)) {
+    errors['quotationValidityDays'] = 'Enter the validity period as a whole number of days.';
+  }
+
+  if (Object.keys(errors).length > 0) return { values: null, errors };
+
+  return {
+    values: {
+      // Basis points, so the rate stays an integer and never accumulates a
+      // floating-point error.
+      defaultVatRateBasisPoints: Math.round(percent * 100),
+      quotationValidityDays: days,
+      defaultClosingParagraph: draft.closingParagraph,
+    },
+    errors,
+  };
+}
+
 interface ReadOnlyRowProps {
   label: string;
   value: string;
@@ -76,7 +166,7 @@ export default function SettingsPage() {
   const token = state.status === 'authenticated' ? state.token : null;
   const isAdmin = state.status === 'authenticated' && state.user.role === 'Admin';
 
-  const [draft, setDraft] = useState<BusinessSettings | null>(null);
+  const [draft, setDraft] = useState<SettingsDraft | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string> | null>(null);
 
@@ -90,7 +180,7 @@ export default function SettingsPage() {
     mutationFn: (values: BusinessSettings) => updateSettings(values, token ?? ''),
     onSuccess: (saved) => {
       void queryClient.invalidateQueries({ queryKey: ['settings'] });
-      setDraft(saved.business);
+      setDraft(toDraft(saved.business));
       setFormError(null);
       setFieldErrors(null);
       show({ variant: 'success', message: 'Company settings saved.' });
@@ -113,10 +203,8 @@ export default function SettingsPage() {
   // the query refetches.
   const loaded = settings.data;
   if (loaded !== undefined && draft === null) {
-    setDraft(loaded.business);
+    setDraft(toDraft(loaded.business));
   }
-
-  const vatPercent = draft === null ? '' : String(draft.defaultVatRateBasisPoints / 100);
 
   return (
     <>
@@ -145,7 +233,21 @@ export default function SettingsPage() {
               className="flex flex-col gap-4"
               onSubmit={(event) => {
                 event.preventDefault();
-                saveMutation.mutate(draft);
+
+                /*
+                 * An unfilled box stops here rather than being sent as a
+                 * number nobody typed. The server still validates everything
+                 * it receives — this only catches what could never reach it.
+                 */
+                const parsed = parseDraft(draft);
+                if (parsed.values === null) {
+                  setFormError(null);
+                  setFieldErrors(parsed.errors);
+                  return;
+                }
+
+                setFieldErrors(null);
+                saveMutation.mutate(parsed.values);
               }}
             >
               <div className="grid gap-4 sm:grid-cols-2">
@@ -162,19 +264,14 @@ export default function SettingsPage() {
                       step="0.01"
                       min="0"
                       max="100"
-                      value={vatPercent}
+                      value={draft.vatPercent}
                       invalid={invalid}
                       {...(describedBy === undefined ? {} : { 'aria-describedby': describedBy })}
                       onChange={(event) => {
-                        // Stored as basis points, so the rate stays an integer
-                        // and never accumulates a floating-point error.
-                        const percent = Number.parseFloat(event.target.value);
-                        setDraft({
-                          ...draft,
-                          defaultVatRateBasisPoints: Number.isFinite(percent)
-                            ? Math.round(percent * 100)
-                            : 0,
-                        });
+                        // Kept exactly as typed. Clearing the box leaves it
+                        // empty; it does not become 0. The conversion to basis
+                        // points happens once, at submit.
+                        setDraft({ ...draft, vatPercent: event.target.value });
                       }}
                     />
                   )}
@@ -192,15 +289,11 @@ export default function SettingsPage() {
                       type="number"
                       min="1"
                       max="365"
-                      value={String(draft.quotationValidityDays)}
+                      value={draft.validityDays}
                       invalid={invalid}
                       {...(describedBy === undefined ? {} : { 'aria-describedby': describedBy })}
                       onChange={(event) => {
-                        const days = Number.parseInt(event.target.value, 10);
-                        setDraft({
-                          ...draft,
-                          quotationValidityDays: Number.isFinite(days) ? days : 0,
-                        });
+                        setDraft({ ...draft, validityDays: event.target.value });
                       }}
                     />
                   )}
@@ -217,11 +310,11 @@ export default function SettingsPage() {
                   <Textarea
                     id={id}
                     rows={6}
-                    value={draft.defaultClosingParagraph}
+                    value={draft.closingParagraph}
                     invalid={invalid}
                     {...(describedBy === undefined ? {} : { 'aria-describedby': describedBy })}
                     onChange={(event) => {
-                      setDraft({ ...draft, defaultClosingParagraph: event.target.value });
+                      setDraft({ ...draft, closingParagraph: event.target.value });
                     }}
                   />
                 )}

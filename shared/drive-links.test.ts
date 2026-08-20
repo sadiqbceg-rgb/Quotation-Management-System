@@ -10,6 +10,8 @@ import { DriveLinkError, driveFileId, driveUrl, isDriveUrl, parseDriveTarget } f
 const FILE_ID = 'test-only-file-000000-1';
 const FILE_URL = 'https://drive.google.com/file/d/test-only-file-000000-1/view';
 const FOLDER_URL = 'https://drive.google.com/drive/folders/test-only-folder-1';
+/** What Drive returns for an uploaded .docx — the Docs editor, not the viewer. */
+const DOCS_EDITOR_URL = 'https://docs.google.com/document/d/test-only-file-000000-1/edit';
 
 describe('file ids', () => {
   it('accepts an opaque Drive id', () => {
@@ -29,6 +31,25 @@ describe('links', () => {
     expect(driveUrl(FOLDER_URL)).toBe(FOLDER_URL);
   });
 
+  it('accepts the Docs editor link Drive returns for a Word file', () => {
+    /*
+     * `DriveApp.getUrl()` answers with the host that can OPEN the file. A PDF
+     * gets the Drive viewer; a .docx gets the Google Docs editor, because Drive
+     * knows the editor can open an Office document.
+     *
+     * Rejecting this rejected the URL of every successfully uploaded Word file,
+     * and the save was reported as "The Word document did not upload".
+     */
+    expect(driveUrl(DOCS_EDITOR_URL)).toBe(DOCS_EDITOR_URL);
+    expect(isDriveUrl(DOCS_EDITOR_URL)).toBe(true);
+  });
+
+  it('accepts a Docs spreadsheet link, which is the same mechanism', () => {
+    const sheet = 'https://docs.google.com/spreadsheets/d/test-only-sheet-1/edit';
+
+    expect(isDriveUrl(sheet)).toBe(true);
+  });
+
   it('refuses anything that is not a Drive link', () => {
     // The point of the constructor: a plausible-looking but fabricated link
     // fails where it is built, not when a user clicks it.
@@ -38,6 +59,14 @@ describe('links', () => {
       'http://drive.google.com/file/d/x/view',
       'https://drive.google.com.evil.example/file/d/x',
       'https://example.invalid/file',
+      // Widening to two Google hosts must not widen to anything else. These
+      // are the near-misses the allowlist has to keep refusing.
+      'http://docs.google.com/document/d/x/edit',
+      'https://docs.google.com.evil.example/document/d/x',
+      'https://docs.google.evil.example/document/d/x',
+      'https://notdocs.google.com/document/d/x',
+      'https://sites.google.com/view/x',
+      'https://google.com/document/d/x',
       // A scheme that would execute if it ever reached an href. Built by
       // concatenation so the lint rule that bans script URLs stays on.
       `java${'script'}:alert(1)`,

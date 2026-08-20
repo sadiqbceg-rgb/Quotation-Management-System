@@ -117,9 +117,31 @@ describe('the result', () => {
     if (result.outcome !== 'success') expect.unreachable('expected success');
 
     for (const target of [result.folder, result.files.pdf, result.files.docx]) {
-      expect(target.url).toMatch(/^https:\/\/drive\.google\.com\//);
+      // Either Google host. This asserted `drive.google.com` only, which is
+      // what let a bug ship that rejected every uploaded Word file.
+      expect(target.url).toMatch(/^https:\/\/(drive|docs)\.google\.com\//);
       expect(target.fileId.length).toBeGreaterThan(0);
     }
+  });
+
+  it('accepts the Docs editor URL Drive returns for a Word file', () => {
+    const result = store();
+    if (result.outcome !== 'success') expect.unreachable('expected success');
+
+    // The two hosts are not interchangeable — Drive picks by file type, and
+    // this is the pairing production actually produces.
+    expect(result.files.pdf.url).toMatch(/^https:\/\/drive\.google\.com\/file\/d\//);
+    expect(result.files.docx.url).toMatch(/^https:\/\/docs\.google\.com\/document\/d\//);
+  });
+
+  it('records BOTH documents as uploaded, with no missing entry', () => {
+    const result = store();
+
+    // The regression this guards: the DOCX uploaded, its URL was rejected, and
+    // the save was reported as `partial` with the Word document "missing".
+    expect(result.outcome).toBe('success');
+    if (result.outcome !== 'success') return;
+    expect(result.uploaded.map((file) => file.kind).sort()).toEqual(['docx', 'pdf']);
   });
 
   it('reports what it created', () => {

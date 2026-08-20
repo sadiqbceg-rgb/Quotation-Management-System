@@ -67,10 +67,31 @@ function toPublic(record: clients.ClientRecordRow): PublicClient {
   };
 }
 
+/**
+ * The customer library.
+ *
+ * ---------------------------------------------------------------------------
+ * WHO MAY SEE A DEACTIVATED CUSTOMER
+ * ---------------------------------------------------------------------------
+ * Only an Admin. Deactivating a customer is an Admin-only decision — it is the
+ * company saying "do not quote this client again" — and a read that hands the
+ * deactivated rows to anyone who asks makes that decision advisory rather than
+ * enforced. The picker on New Quotation offers active customers only, so a User
+ * who could still fetch the inactive ones would be fetching precisely the
+ * records they have been told not to use.
+ *
+ * The flag is DOWNGRADED rather than refused. A User asking for everything is
+ * not misbehaving — the frontend sends `includeInactive` derived from the
+ * caller's own role — so the honest response is the list they are entitled to,
+ * not an error for a request they did not knowingly make.
+ *
+ * Active customers are unchanged for everybody: this narrows one flag and
+ * nothing else.
+ */
 export function list(payload: unknown, context: HandlerContext): PublicClient[] {
-  requireCaller(context);
+  const caller = requireCaller(context);
   const body = asRecord(payload);
-  const includeInactive = body['includeInactive'] === true;
+  const includeInactive = body['includeInactive'] === true && caller.role === 'Admin';
 
   return clients.listClients(includeInactive).map(toPublic);
 }

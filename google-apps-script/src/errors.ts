@@ -33,11 +33,31 @@ export type ErrorCode =
 export class ApiError extends Error {
   public readonly code: ErrorCode;
   public readonly fields: Record<string, string> | undefined;
+  /**
+   * What actually went wrong, for the server log only.
+   *
+   * NEVER serialised: `failure()` in main.ts builds the client body from `code`,
+   * `message` and `fields`, and this is not among them. It exists because the
+   * alternative was losing the reason entirely — a Drive refusal was classified
+   * into a generic code and the original text discarded, so an operator had
+   * nothing to read and the same failure stayed undiagnosable every time.
+   *
+   * A plain string rather than the thrown value: whatever Drive threw may hold
+   * a folder id or an account address (§19.9), and a caller that logs this must
+   * be handed prose, not an object to expand.
+   */
+  public readonly detail: string | undefined;
 
-  constructor(code: ErrorCode, message: string, fields?: Record<string, string>) {
+  constructor(
+    code: ErrorCode,
+    message: string,
+    fields?: Record<string, string>,
+    detail?: string,
+  ) {
     super(message);
     this.code = code;
     this.fields = fields;
+    this.detail = detail;
   }
 }
 

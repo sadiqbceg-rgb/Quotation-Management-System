@@ -94,6 +94,20 @@ export interface ValidatedQuotation {
   totals: Totals;
   discountRateBasisPoints: number | undefined;
   vatRateBasisPoints: number | undefined;
+  /**
+   * How many days this quotation declares itself valid for — a SNAPSHOT, taken
+   * from Company Settings when the quotation was created (§6.3, §10.4).
+   *
+   * The same discipline as `vatRateBasisPoints` and `closingParagraph`: the
+   * value lives on the quotation, so an administrator changing the company
+   * default afterwards cannot alter a quotation already written. It resolves
+   * `{{quotation.validityDays}}` in the terms.
+   *
+   * `undefined` means the caller sent none. That is legitimate for a record
+   * created before this field existed; the caller decides the fallback, and the
+   * save handler keeps whatever the stored record already had.
+   */
+  validityDays: number | undefined;
   /** Present only on an update; the server ignores it and re-reads storage. */
   submittedQuotationNumber: string | undefined;
 }
@@ -410,6 +424,30 @@ export function validateQuotation(
   const discountRateBasisPoints = integer(source, 'discountRateBasisPoints');
   const vatRateBasisPoints = integer(source, 'vatRateBasisPoints');
 
+  /*
+   * Validity days.
+   *
+   * Absent is accepted — a draft saved by an older client, or a record created
+   * before the field existed, has none, and refusing those would lock people
+   * out of quotations they already have. Present-but-nonsense is refused: this
+   * number is printed in a term the client reads, and "valid for 0 days" or
+   * "valid for 99999 days" is not something anyone meant to write.
+   *
+   * The endpoint is public, so this is the control — the browser never sends a
+   * value a user typed, but a direct caller can send anything.
+   */
+  const validityDays = integer(source, 'validityDays');
+  if (
+    source['validityDays'] !== undefined &&
+    source['validityDays'] !== null &&
+    (validityDays === undefined ||
+      validityDays < QUOTATION_LIMITS.validityDaysMin ||
+      validityDays > QUOTATION_LIMITS.validityDaysMax)
+  ) {
+    fields['validityDays'] =
+      `Validity must be a whole number of days between ${String(QUOTATION_LIMITS.validityDaysMin)} and ${String(QUOTATION_LIMITS.validityDaysMax)}.`;
+  }
+
   const submittedNumber = optionalText(source, 'quotationNumber');
   if (submittedNumber !== undefined && !isValidQuotationNumber(submittedNumber, quotationCodes())) {
     fields['quotationNumber'] = 'The quotation number is not valid.';
@@ -454,6 +492,7 @@ export function validateQuotation(
     totals,
     discountRateBasisPoints,
     vatRateBasisPoints,
+    validityDays,
     submittedQuotationNumber: submittedNumber,
   };
 }

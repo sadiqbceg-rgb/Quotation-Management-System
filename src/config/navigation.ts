@@ -29,9 +29,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
 /**
  * Company identity shown in the application shell.
  *
- * Taken from the letterhead in reference/letterhead.pdf. Once Phase 03 wires
- * Company Settings, the live values come from the backend and these become the
- * pre-configuration fallback only.
+ * Taken from the letterhead in reference/letterhead.pdf, and it stays here.
+ *
+ * This used to say Company Settings would supersede it. That surface now
+ * exists, and it deliberately reports these two as READ-ONLY instead: the
+ * printed identity lives in the letterhead ARTWORK, which the PDF embeds
+ * directly. Editing them as text would change the Word document and not the
+ * PDF, so the two files for one quotation would disagree about who issued it.
+ * Changing them is replacing the letterhead, not editing a setting.
  */
 export const COMPANY_IDENTITY = {
   name: 'Speed Falcon Company',

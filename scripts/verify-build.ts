@@ -287,12 +287,130 @@ function kilobytes(bytes: number): string {
   return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
-export function verifyBuild(directory: string): { failures: Failure[]; report: SizeReport } {
+/* -------------------------------------------------------------------------- */
+/* Production environment                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What can and cannot be checked automatically.
+ *
+ * CAN: that a production build declares `VITE_APP_ENV=production`, and that the
+ * endpoint it carries is a single HTTPS Apps Script `/exec` URL.
+ *
+ * CANNOT: whether that endpoint is the PRODUCTION deployment or the
+ * development one. Both are `https://script.google.com/macros/s/<opaque>/exec`
+ * and the ids carry no marker distinguishing them — Google does not encode the
+ * environment anywhere in the URL.
+ *
+ * Guessing would be worse than not checking: a heuristic that is wrong once
+ * either blocks a correct deploy or waves through the wrong endpoint while
+ * appearing to have verified it. So this refuses to guess, and RUNBOOK.md §3
+ * carries the manual step of comparing the built endpoint against the
+ * deployment id in Manage deployments.
+ */
+export function checkProductionEnvironment(
+  artefacts: readonly Artefact[],
+  env: Record<string, string | undefined>,
+): Failure[] {
+  const failures: Failure[] = [];
+
+  // Only enforced when the caller says this is a production build. A developer
+  // running `npm run deploy:check` locally must not be blocked.
+  if (env['VITE_APP_ENV'] !== 'production') return failures;
+
+  const endpoints = new Set<string>();
+  for (const file of artefacts) {
+    if (file.text === null) continue;
+    for (const endpoint of file.text.match(ENDPOINT_PATTERN) ?? []) endpoints.add(endpoint);
+  }
+
+  if (endpoints.size === 0) {
+    failures.push({
+      check: 'production endpoint',
+      detail:
+        'VITE_APP_ENV is production but the bundle carries no Apps Script endpoint. Set VITE_GAS_ENDPOINT in the host environment before building.',
+    });
+    return failures;
+  }
+
+  if (endpoints.size > 1) {
+    failures.push({
+      check: 'production endpoint',
+      detail: `the bundle carries ${String(endpoints.size)} different endpoints: ${[...endpoints].join(', ')}`,
+    });
+  }
+
+  for (const endpoint of endpoints) {
+    if (!endpoint.startsWith('https://')) {
+      failures.push({
+        check: 'production endpoint',
+        detail: `${endpoint} is not HTTPS`,
+      });
+    }
+    if (!endpoint.endsWith('/exec')) {
+      failures.push({
+        check: 'production endpoint',
+        detail: `${endpoint} does not end in /exec. A /dev URL is the always-latest test URL and requires a Google sign-in the SPA cannot complete.`,
+      });
+    }
+  }
+
+  return failures;
+}
+
+/**
+ * Refuse a production build that never declared itself one.
+ *
+ * `VITE_APP_ENV` defaults to `development` in the env schema, so a host that
+ * forgot to set it produces a build that looks fine and silently runs in
+ * development mode.
+ */
+export function checkAppEnv(
+  artefacts: readonly Artefact[],
+  env: Record<string, string | undefined>,
+): Failure[] {
+  const declared = env['VITE_APP_ENV'];
+  if (declared === undefined) return [];
+
+  if (declared !== 'production' && declared !== 'development') {
+    return [
+      {
+        check: 'app environment',
+        detail: `VITE_APP_ENV is "${declared}"; it must be "production" or "development"`,
+      },
+    ];
+  }
+
+  if (declared !== 'production') return [];
+
+  const carriesDevelopmentMode = artefacts.some(
+    (file) => file.text !== null && /"?VITE_APP_ENV"?\s*:\s*"development"/.test(file.text),
+  );
+
+  return carriesDevelopmentMode
+    ? [
+        {
+          check: 'app environment',
+          detail: 'the build declares production but carries VITE_APP_ENV=development',
+        },
+      ]
+    : [];
+}
+
+export function verifyBuild(
+  directory: string,
+  env: Record<string, string | undefined> = process.env,
+): { failures: Failure[]; report: SizeReport } {
   const artefacts = walk(directory);
   const report = sizeReport(artefacts);
 
   return {
-    failures: [...checkArtefacts(artefacts), ...checkLazyLoading(report)],
+    failures: [
+      ...checkArtefacts(artefacts),
+      ...checkLazyLoading(report),
+      ...checkAppEnv(artefacts, env),
+      ...checkProductionEnvironment(artefacts, env),
+    ],
     report,
   };
 }

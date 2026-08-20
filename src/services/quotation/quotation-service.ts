@@ -60,6 +60,19 @@ export interface QuotationPayload {
   };
   discountRateBasisPoints?: number;
   vatRateBasisPoints?: number;
+  /**
+   * How many days this quotation declares itself valid for.
+   *
+   * A SNAPSHOT, in the same sense as `vatRateBasisPoints` and
+   * `closingParagraph`: seeded from Company Settings when the quotation is
+   * created, then stored on the quotation and never re-read from Settings
+   * again. It is what `{{quotation.validityDays}}` resolves to.
+   *
+   * Optional on the wire so a quotation stored before this field existed still
+   * round-trips; the server keeps whatever the record already had rather than
+   * treating an omission as a deletion.
+   */
+  validityDays?: number;
   /** Echoed on an update. The server ignores it and re-reads storage. */
   quotationNumber?: string;
 }
